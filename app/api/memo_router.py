@@ -1,10 +1,11 @@
 # api/endpoints.py
 
-from functools import wraps
-from typing import Callable
+
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
+
+from app.api.ext import require_authorization
 
 router = APIRouter()
 
@@ -25,19 +26,6 @@ class MemoryListRequest(BaseModel):
 class ChatSummary(BaseModel):
     timestamp: str
     summary: str
-
-
-def require_authorization(func: Callable):
-    @wraps(func)
-    async def wrapper(request: Request, *args, **kwargs):
-        authorization = request.headers.get("authorization", "").replace("Bearer ", "")
-        if not authorization:
-            raise HTTPException(status_code=401, detail="Authorization token is required")
-        # 将授权令牌传递给原始函数，以便它可以使用
-        kwargs['authorization'] = authorization
-        return await func(request, *args, **kwargs)
-
-    return wrapper
 
 
 @router.get("/list")

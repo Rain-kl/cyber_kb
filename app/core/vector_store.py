@@ -4,10 +4,11 @@ import chromadb
 
 
 class VectorStore:
-    def __init__(self, persist_directory="./data/chroma_db"):
+    def __init__(self, collection, persist_directory="./data/chroma_db"):
         os.makedirs(persist_directory, exist_ok=True)
+        assert isinstance(collection, str), "collection must be a string"
         self.chroma_client = chromadb.PersistentClient(path=persist_directory)
-        self.collection = self.chroma_client.get_or_create_collection("documents")
+        self.collection = self.chroma_client.get_or_create_collection(collection)
 
     def add_documents(self, document_chunks, embeddings, metadata_list, doc_id):
         """添加文档到向量数据库"""

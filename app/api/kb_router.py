@@ -1,7 +1,10 @@
-from fastapi import APIRouter, HTTPException
+import logging
+
+from fastapi import APIRouter, HTTPException, Request
 from fastapi import UploadFile, File, Query
 from fastapi.responses import JSONResponse
-
+from app.api.ext import require_authorization, parse_query_response
+from app.api.model import QueryResponseModel, OK
 from app.config import OLLAMA_API_URL, OLLAMA_MODEL_NAME, TIKA_SERVER_URL
 from app.core.document_processor import DocumentProcessor
 from app.core.embedding_async import AsyncOllamaEmbeddingModel
@@ -12,14 +15,20 @@ router = APIRouter()
 # 初始化组件
 document_processor = DocumentProcessor(TIKA_SERVER_URL)
 embedding_model = AsyncOllamaEmbeddingModel(OLLAMA_API_URL, OLLAMA_MODEL_NAME)
-vector_store = VectorStore()
 
 
 @router.post("/documents/upload")
-async def upload_document(file: UploadFile = File(...)):
+@require_authorization
+async def upload_document(
+        request: Request,
+        file: UploadFile = File(...),
+):
     """上传文档到知识库"""
     # try:
     # 保存文件
+    authorization = request.headers.get("authorization", "").replace("Bearer ", "")
+    vector_store = VectorStore(authorization)
+
     file_path, filename, md5hash = document_processor.save_file(file)
 
     # 提取内容
@@ -71,60 +80,50 @@ async def upload_document(file: UploadFile = File(...)):
 
 
 @router.get("/query/embedding")
+@require_authorization
 async def search(
+        request: Request,
         query: str = Query(..., description="搜索查询"),
-        top_k: int = Query(5, description="返回结果数量")
-):
+        top_k: int = Query(5, description="返回结果数量"),
+) -> OK:
     """搜索知识库"""
     try:
+        authorization = request.headers.get("authorization", "").replace("Bearer ", "")
+        vector_store = VectorStore(authorization)
+        # vector_store = VectorStore("documents")
+
         # 获取查询的嵌入向量
         query_embedding = await embedding_model.get_embedding(query)
 
         # 搜索向量数据库
         results = vector_store.search_by_embedding(query_embedding, top_k)
 
-        # 处理结果
-        documents = results.get("documents", [[]])[0]
-        metadatas = results.get("metadatas", [[]])[0]
-        distances = results.get("distances", [[]])[0]
+        response_items: list[QueryResponseModel] = parse_query_response(results)
 
-        response_items = []
-        for doc, meta, dist in zip(documents, metadatas, distances):
-            response_items.append({
-                "content": doc,
-                "metadata": meta,
-                "relevance_score": 1 - dist  # 转换距离为相关性分数
-            })
-
-        return {"results": response_items}
+        return OK(data=response_items)
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"搜索失败: {str(e)}")
 
-
-@router.get("/query/keyword")
-async def search_by_keyword(
-        keyword: str = Query(..., description="关键字搜索"),
-        top_k: int = Query(5, description="返回结果数量")
-):
-    """基于关键字搜索知识库"""
-    try:
-        results = vector_store.search_by_keyword(keyword, top_k)
-
-        # 处理结果
-        documents = results.get("documents", [[]])[0]
-        metadatas = results.get("metadatas", [[]])[0]
-        distances = results.get("distances", [[]])[0]
-
-        response_items = []
-        for doc, meta, dist in zip(documents, metadatas, distances):
-            response_items.append({
-                "content": doc,
-                "metadata": meta,
-                "relevance_score": 1 - dist
-            })
-
-        return {"results": response_items}
-
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"关键字搜索失败: {str(e)}")
+#
+# @router.get("/query/keyword")
+# @require_authorization
+# async def search_by_keyword(
+#         request: Request,
+#         keyword: str = Query(..., description="关键字搜索"),
+#         top_k: int = Query(5, description="返回结果数量"),
+# ) -> OK:
+#     """基于关键字搜索知识库"""
+#     try:
+#         authorization = request.headers.get("authorization", "").replace("Bearer ", "")
+#         vector_store = VectorStore(authorization)
+#         # vector_store = VectorStore("documents")
+#         results = vector_store.search_by_keyword(keyword, top_k)
+#
+#         response_items: list[QueryResponseModel] = parse_query_response(results)
+#
+#         return OK(data=response_items)
+#
+#     except Exception as e:
+#         logging.exception(e)
+#         raise HTTPException(status_code=500, detail=f"关键字搜索失败: {str(e)}")
