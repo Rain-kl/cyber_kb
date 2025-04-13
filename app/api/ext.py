@@ -1,9 +1,16 @@
+import asyncio
 from functools import wraps
 from typing import Callable
 
 from fastapi import HTTPException, Request
 
 from app.api.model import QueryResponseModel
+from app.config import TIKA_SERVER_URL, OLLAMA_API_URL, OLLAMA_MODEL_NAME
+from app.core.document_processor import DocumentProcessor
+from app.core.embedding import AsyncOllamaEmbeddingModel
+
+document_processor = DocumentProcessor(TIKA_SERVER_URL)
+embedding_model = AsyncOllamaEmbeddingModel(OLLAMA_API_URL, OLLAMA_MODEL_NAME)
 
 
 def require_authorization(func: Callable):

@@ -1,24 +1,36 @@
-import logging
-
 from fastapi import APIRouter, HTTPException, Request
 from fastapi import UploadFile, File, Query
 from fastapi.responses import JSONResponse
-from app.api.ext import require_authorization, parse_query_response
+from loguru import logger
+from app.api.ext import require_authorization, parse_query_response, document_processor, embedding_model
 from app.api.model import QueryResponseModel, OK
-from app.config import OLLAMA_API_URL, OLLAMA_MODEL_NAME, TIKA_SERVER_URL
-from app.core.document_processor import DocumentProcessor
-from app.core.embedding_async import AsyncOllamaEmbeddingModel
-from app.core.vector_store import VectorStore
+from app.core.vector_store import KBVectorStore
 
-router = APIRouter()
+router = APIRouter(tags=["knowledge_base"])
+authorization = "test"
 
-# 初始化组件
-document_processor = DocumentProcessor(TIKA_SERVER_URL)
-embedding_model = AsyncOllamaEmbeddingModel(OLLAMA_API_URL, OLLAMA_MODEL_NAME)
+
+@router.get("/documents/list")
+async def get_documents_list(
+        request: Request,
+        limit: int = Query(10, description="返回结果数量"),
+):
+    """获取知识库中的文档列表"""
+    try:
+        # authorization = request.headers.get("authorization", "").replace("Bearer ", "")
+        authorization = "test"
+        vector_store = KBVectorStore(authorization)
+        # vector_store = VectorStore("documents")
+        results = vector_store.list_all_documents(limit)
+
+        return OK(data=results)
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"获取文档列表失败: {str(e)}")
 
 
 @router.post("/documents/upload")
-@require_authorization
+# @require_authorization
 async def upload_document(
         request: Request,
         file: UploadFile = File(...),
@@ -26,8 +38,9 @@ async def upload_document(
     """上传文档到知识库"""
     # try:
     # 保存文件
-    authorization = request.headers.get("authorization", "").replace("Bearer ", "")
-    vector_store = VectorStore(authorization)
+    # authorization = request.headers.get("authorization", "").replace("Bearer ", "")
+    authorization = "test"
+    vector_store = KBVectorStore(authorization)
 
     file_path, filename, md5hash = document_processor.save_file(file)
 
@@ -36,11 +49,12 @@ async def upload_document(
         response = document_processor.process_document(file_path)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"tika processing error: {str(e)}")
-
+    logger.info(f"tika processing complete! total nums: {len(f"{response}")}")
     content = response["content"]
     metadata = response["metadata"]
     # 文本分块
     chunks: list = document_processor.chunk_text(content)
+    logger.info(f"chunk text complete! total nums: {len(chunks)}")
 
     if not chunks:
         return JSONResponse(
@@ -49,7 +63,7 @@ async def upload_document(
         )
 
     # 获取嵌入向量
-    embeddings = await embedding_model.get_embeddings(chunks)
+    embeddings = await embedding_model.get_embeddings_batch(chunks)
 
     # 准备元数据
     doc_id = md5hash
@@ -89,7 +103,7 @@ async def search(
     """搜索知识库"""
     try:
         authorization = request.headers.get("authorization", "").replace("Bearer ", "")
-        vector_store = VectorStore(authorization)
+        vector_store = KBVectorStore(authorization)
         # vector_store = VectorStore("documents")
 
         # 获取查询的嵌入向量
