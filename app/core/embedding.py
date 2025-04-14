@@ -2,8 +2,9 @@
 import asyncio
 from asyncio import Semaphore, TaskGroup
 from typing import List
-import requests
+
 import httpx
+import requests
 from loguru import logger
 from tqdm import tqdm  # 导入 tqdm 用于进度条
 
@@ -97,23 +98,6 @@ class AsyncOllamaEmbeddingModel:
             # 返回零向量作为错误时的默认值
             return [0.0] * self.embedding_dim
 
-    async def get_embeddings(self, texts: List[str]) -> List[List[float]]:
-        """
-        异步获取多个文本的嵌入向量
-
-        Args:
-            texts: 输入文本列表
-
-        Returns:
-            嵌入向量列表
-        """
-        if not texts:
-            return []
-
-        # 使用异步任务并发处理所有文本
-        tasks = [self.get_embedding(text) for text in texts]
-        return await asyncio.gather(*tasks)
-
     async def get_embeddings_batch(
             self, texts: List[str],
             batch_size: int = 10,
@@ -195,11 +179,6 @@ class AsyncOllamaEmbeddingModel:
         """同步获取嵌入的包装方法"""
         loop = asyncio.get_event_loop()
         return loop.run_until_complete(self.get_embedding(text))
-
-    def get_embeddings_sync(self, texts: List[str]) -> List[List[float]]:
-        """同步获取多个嵌入的包装方法"""
-        loop = asyncio.get_event_loop()
-        return loop.run_until_complete(self.get_embeddings(texts))
 
     def get_embeddings_batch_sync(self, texts: List[str], batch_size: int = 10) -> List[List[float]]:
         """同步批量获取嵌入的包装方法"""
