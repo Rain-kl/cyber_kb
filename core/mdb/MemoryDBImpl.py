@@ -2,7 +2,7 @@ import datetime
 import sqlite3
 from typing import List, Dict, Any
 
-from app.core.mdb.MemoryDB import MemoryDatabaseInterface
+from .MemoryDB import MemoryDatabaseInterface
 
 
 class MemoryDB(MemoryDatabaseInterface):
@@ -55,17 +55,20 @@ class MemoryDB(MemoryDatabaseInterface):
 
         try:
             # 创建 layer1 表
-            self.cursor.execute('''
+            self.cursor.execute(
+                """
             CREATE TABLE IF NOT EXISTS layer1 (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 apikey TEXT NOT NULL,
                 content TEXT NOT NULL,
                 timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
             )
-            ''')
+            """
+            )
 
             # 创建 layer3 表
-            self.cursor.execute('''
+            self.cursor.execute(
+                """
             CREATE TABLE IF NOT EXISTS layer3 (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 apikey TEXT NOT NULL,
@@ -73,11 +76,16 @@ class MemoryDB(MemoryDatabaseInterface):
                 instruction TEXT NOT NULL,
                 timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
             )
-            ''')
+            """
+            )
 
             # 为 apikey 创建索引，优化查询性能
-            self.cursor.execute('CREATE INDEX IF NOT EXISTS idx_layer1_apikey ON layer1 (apikey)')
-            self.cursor.execute('CREATE INDEX IF NOT EXISTS idx_layer3_apikey ON layer3 (apikey)')
+            self.cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_layer1_apikey ON layer1 (apikey)"
+            )
+            self.cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_layer3_apikey ON layer3 (apikey)"
+            )
 
             self.conn.commit()
         except sqlite3.Error as e:
@@ -98,10 +106,10 @@ class MemoryDB(MemoryDatabaseInterface):
             self.connect()
 
         try:
-            current_time = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             self.cursor.execute(
-                'INSERT INTO layer1 (apikey, content, timestamp) VALUES (?, ?, ?)',
-                (apikey, content, current_time)
+                "INSERT INTO layer1 (apikey, content, timestamp) VALUES (?, ?, ?)",
+                (apikey, content, current_time),
             )
             self.conn.commit()
             return self.cursor.lastrowid
@@ -124,10 +132,10 @@ class MemoryDB(MemoryDatabaseInterface):
             self.connect()
 
         try:
-            current_time = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             self.cursor.execute(
-                'INSERT INTO layer3 (apikey, behavior, instruction, timestamp) VALUES (?, ?, ?, ?)',
-                (apikey, behavior, instruction, current_time)
+                "INSERT INTO layer3 (apikey, behavior, instruction, timestamp) VALUES (?, ?, ?, ?)",
+                (apikey, behavior, instruction, current_time),
             )
             self.conn.commit()
             return self.cursor.lastrowid
@@ -148,7 +156,10 @@ class MemoryDB(MemoryDatabaseInterface):
             self.connect()
 
         try:
-            self.cursor.execute('SELECT * FROM layer1 WHERE apikey = ? ORDER BY timestamp DESC', (apikey,))
+            self.cursor.execute(
+                "SELECT * FROM layer1 WHERE apikey = ? ORDER BY timestamp DESC",
+                (apikey,),
+            )
             results = self.cursor.fetchall()
             return [dict(row) for row in results]
         except sqlite3.Error as e:
@@ -167,7 +178,10 @@ class MemoryDB(MemoryDatabaseInterface):
             self.connect()
 
         try:
-            self.cursor.execute('SELECT * FROM layer3 WHERE apikey = ? ORDER BY timestamp DESC', (apikey,))
+            self.cursor.execute(
+                "SELECT * FROM layer3 WHERE apikey = ? ORDER BY timestamp DESC",
+                (apikey,),
+            )
             results = self.cursor.fetchall()
             return [dict(row) for row in results]
         except sqlite3.Error as e:
@@ -187,10 +201,10 @@ class MemoryDB(MemoryDatabaseInterface):
             self.connect()
 
         try:
-            current_time = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             self.cursor.execute(
-                'UPDATE layer1 SET content = ?, timestamp = ? WHERE id = ?',
-                (content, current_time, record_id)
+                "UPDATE layer1 SET content = ?, timestamp = ? WHERE id = ?",
+                (content, current_time, record_id),
             )
             self.conn.commit()
             return self.cursor.rowcount > 0
@@ -198,7 +212,9 @@ class MemoryDB(MemoryDatabaseInterface):
             self.conn.rollback()
             raise Exception(f"更新 layer1 记录失败: {e}")
 
-    def update_layer3_record(self, record_id: int, behavior: str, instruction: str) -> bool:
+    def update_layer3_record(
+        self, record_id: int, behavior: str, instruction: str
+    ) -> bool:
         """更新 layer3 记录
 
         Args:
@@ -213,10 +229,10 @@ class MemoryDB(MemoryDatabaseInterface):
             self.connect()
 
         try:
-            current_time = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             self.cursor.execute(
-                'UPDATE layer3 SET behavior = ?, instruction = ?, timestamp = ? WHERE id = ?',
-                (behavior, instruction, current_time, record_id)
+                "UPDATE layer3 SET behavior = ?, instruction = ?, timestamp = ? WHERE id = ?",
+                (behavior, instruction, current_time, record_id),
             )
             self.conn.commit()
             return self.cursor.rowcount > 0
@@ -237,7 +253,7 @@ class MemoryDB(MemoryDatabaseInterface):
             self.connect()
 
         try:
-            self.cursor.execute('DELETE FROM layer1 WHERE id = ?', (record_id,))
+            self.cursor.execute("DELETE FROM layer1 WHERE id = ?", (record_id,))
             self.conn.commit()
             return self.cursor.rowcount > 0
         except sqlite3.Error as e:
@@ -257,7 +273,7 @@ class MemoryDB(MemoryDatabaseInterface):
             self.connect()
 
         try:
-            self.cursor.execute('DELETE FROM layer3 WHERE id = ?', (record_id,))
+            self.cursor.execute("DELETE FROM layer3 WHERE id = ?", (record_id,))
             self.conn.commit()
             return self.cursor.rowcount > 0
         except sqlite3.Error as e:

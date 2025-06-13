@@ -5,10 +5,10 @@ from typing import List, Dict
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
-from app.api.ext import embedding_model
-from app.api.model import OK
-from app.core.mdb import MemoryDB
-from app.core.vector_store import MemoVectorStore
+from api.ext import embedding_model
+from api.model import OK
+from core.mdb import MemoryDB
+from core.vector_store import MemoVectorStore
 
 router = APIRouter(tags=["memo"])
 authorization = "test"
@@ -53,7 +53,9 @@ async def l1_list_memories(request: Request):
 
         return OK(data=results)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to retrieve memories: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to retrieve memories: {str(e)}"
+        )
 
 
 @router.post("/layer1/upload")
@@ -69,10 +71,13 @@ async def l1_upload_memo_summary(request: Request, upload_data: UploadLayer1Requ
         return OK(data=results)
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to upload memory: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to upload memory: {str(e)}"
+        )
 
 
 ########################################################################################################################
+
 
 @router.get("/layer2/list")
 # @require_authorization
@@ -85,7 +90,9 @@ async def l2_list_memories(request: Request):
 
         return OK(data=results)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to retrieve memories: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to retrieve memories: {str(e)}"
+        )
 
 
 @router.post("/layer2/upload")
@@ -99,25 +106,37 @@ async def l2_upload_memo_summary(request: Request, upload_data: UploadSummaryReq
         vector_store = MemoVectorStore(authorization)
 
         # 获取嵌入向量
-        embeddings = await embedding_model.get_embedding(upload_data.summary)  # 使用 upload_data.summary
+        embeddings = await embedding_model.get_embedding(
+            upload_data.summary
+        )  # 使用 upload_data.summary
         metadata_list = {
             "doc_id": str(int(time.time())),
             "filename": f"summary_{int(time.time())}",
             "chunk_index": 0,
             "mime_type": "unknown",
-            "total_chunks": len(upload_data.summary)  # 注意：len(summary) 是字符串长度，可能不是实际的 chunks 数
+            "total_chunks": len(
+                upload_data.summary
+            ),  # 注意：len(summary) 是字符串长度，可能不是实际的 chunks 数
         }
         # 存储到向量数据库
-        vector_store.add_documents([upload_data.summary], embeddings, [metadata_list], str(int(time.time())))
-        return OK(data={
-            "message": "摘要上传成功",
-            "summary": upload_data.summary[:100] + "..."  # 使用 upload_data.summary
-        })
+        vector_store.add_documents(
+            [upload_data.summary], embeddings, [metadata_list], str(int(time.time()))
+        )
+        return OK(
+            data={
+                "message": "摘要上传成功",
+                "summary": upload_data.summary[:100]
+                + "...",  # 使用 upload_data.summary
+            }
+        )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to upload memory: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to upload memory: {str(e)}"
+        )
 
 
 ########################################################################################################################
+
 
 @router.get("/layer3/list")
 # @require_authorization
@@ -135,7 +154,9 @@ async def l3_list_memories(request: Request):
         return OK(data=results)
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to retrieve memories: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to retrieve memories: {str(e)}"
+        )
 
 
 @router.post("/layer3/upload")
@@ -147,12 +168,16 @@ async def l3_upload_memo_summary(request: Request, upload_data: UploadLayer3Requ
         # authorization = request.headers.get("authorization", "").replace("Bearer ", "")
 
         with MemoryDB() as db:
-            results = db.add_layer3_record(authorization, upload_data.behavior, upload_data.instruction)
+            results = db.add_layer3_record(
+                authorization, upload_data.behavior, upload_data.instruction
+            )
 
         return OK(data=results)
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to upload memory: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to upload memory: {str(e)}"
+        )
 
 
 ########################################################################################################################
@@ -170,11 +195,9 @@ async def search_memories(request: Request, text: str) -> OK[QueryResponseModel]
             layer1 = db.get_layer1_records_by_apikey(authorization)
             layer3 = db.get_layer3_records_by_apikey(authorization)
 
-        results = QueryResponseModel(
-            layer1=layer1,
-            layer2=layer2,
-            layer3=layer3
-        )
+        results = QueryResponseModel(layer1=layer1, layer2=layer2, layer3=layer3)
         return OK(data=results)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to search memories: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to search memories: {str(e)}"
+        )

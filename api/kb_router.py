@@ -2,9 +2,14 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi import UploadFile, File, Query
 from fastapi.responses import JSONResponse
 from loguru import logger
-from app.api.ext import require_authorization, parse_query_response, document_processor, embedding_model
-from app.api.model import QueryResponseModel, OK
-from app.core.vector_store import KBVectorStore
+from api.ext import (
+    require_authorization,
+    parse_query_response,
+    document_processor,
+    embedding_model,
+)
+from api.model import QueryResponseModel, OK
+from core.vector_store import KBVectorStore
 
 router = APIRouter(tags=["knowledge_base"])
 authorization = "test"
@@ -12,8 +17,8 @@ authorization = "test"
 
 @router.get("/documents/list")
 async def get_documents_list(
-        request: Request,
-        limit: int = Query(10, description="返回结果数量"),
+    request: Request,
+    limit: int = Query(10, description="返回结果数量"),
 ):
     """获取知识库中的文档列表"""
     try:
@@ -32,8 +37,8 @@ async def get_documents_list(
 @router.post("/documents/upload")
 # @require_authorization
 async def upload_document(
-        request: Request,
-        file: UploadFile = File(...),
+    request: Request,
+    file: UploadFile = File(...),
 ):
     """上传文档到知识库"""
     # try:
@@ -58,8 +63,7 @@ async def upload_document(
 
     if not chunks:
         return JSONResponse(
-            status_code=400,
-            content={"message": "无法从文档中提取内容"}
+            status_code=400, content={"message": "无法从文档中提取内容"}
         )
 
     # 获取嵌入向量
@@ -73,7 +77,7 @@ async def upload_document(
             "filename": filename,
             "chunk_index": i,
             "mime_type": metadata.get("Content-Type", "unknown"),
-            "total_chunks": len(chunks)
+            "total_chunks": len(chunks),
         }
         for i in range(len(chunks))
     ]
@@ -86,7 +90,7 @@ async def upload_document(
         "doc_id": doc_id,
         "filename": filename,
         "chunk_count": len(chunks),
-        "summary": response["content"][:100] + "..."
+        "summary": response["content"][:100] + "...",
     }
 
     # except Exception as e:
@@ -96,9 +100,9 @@ async def upload_document(
 @router.get("/query/embedding")
 @require_authorization
 async def search(
-        request: Request,
-        query: str = Query(..., description="搜索查询"),
-        top_k: int = Query(5, description="返回结果数量"),
+    request: Request,
+    query: str = Query(..., description="搜索查询"),
+    top_k: int = Query(5, description="返回结果数量"),
 ) -> OK:
     """搜索知识库"""
     try:
@@ -118,6 +122,7 @@ async def search(
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"搜索失败: {str(e)}")
+
 
 #
 # @router.get("/query/keyword")

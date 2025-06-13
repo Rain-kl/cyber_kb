@@ -46,7 +46,9 @@ class MemoryDatabaseInterface(abc.ABC):
         pass
 
     @abc.abstractmethod
-    def update_layer3_record(self, record_id: int, behavior: str, instruction: str) -> bool:
+    def update_layer3_record(
+        self, record_id: int, behavior: str, instruction: str
+    ) -> bool:
         """更新 layer3 记录"""
         pass
 

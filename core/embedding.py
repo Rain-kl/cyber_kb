@@ -12,9 +12,11 @@ from tqdm import tqdm  # 导入 tqdm 用于进度条
 class AsyncOllamaEmbeddingModel:
     """通过 Ollama API 调用 BGE-M3 嵌入模型"""
 
-    def __init__(self,
-                 ollama_api_url: str = "http://your-ollama-server:11434",
-                 model_name: str = "bge-m3"):
+    def __init__(
+        self,
+        ollama_api_url: str = "http://your-ollama-server:11434",
+        model_name: str = "bge-m3",
+    ):
         """
         初始化 Ollama 嵌入模型
 
@@ -38,7 +40,9 @@ class AsyncOllamaEmbeddingModel:
             return True
         except Exception as e:
             logger.error(f"Failed to connect to Ollama API: {str(e)}")
-            logger.warning("OllamaEmbeddingModel initialized but connection test failed")
+            logger.warning(
+                "OllamaEmbeddingModel initialized but connection test failed"
+            )
             raise e
 
     @staticmethod
@@ -52,11 +56,15 @@ class AsyncOllamaEmbeddingModel:
                 return await func(*args, **kwargs)
             except (httpx.RequestError, httpx.HTTPStatusError) as e:
                 if attempt < max_retries - 1:
-                    logger.warning(f"API request failed: {str(e)}. Retrying in {retry_delay} seconds...")
+                    logger.warning(
+                        f"API request failed: {str(e)}. Retrying in {retry_delay} seconds..."
+                    )
                     await asyncio.sleep(retry_delay)
                     retry_delay *= 2  # 指数退避
                 else:
-                    logger.error(f"API request failed after {max_retries} attempts: {str(e)}")
+                    logger.error(
+                        f"API request failed after {max_retries} attempts: {str(e)}"
+                    )
                     raise
 
     async def get_embedding(self, text: str) -> List[float]:
@@ -74,10 +82,7 @@ class AsyncOllamaEmbeddingModel:
             # 返回零向量作为默认值，维度为 1024（BGE-M3 的嵌入维度）
             return [0.0] * self.embedding_dim
 
-        payload = {
-            "model": self.model_name,
-            "prompt": text
-        }
+        payload = {"model": self.model_name, "prompt": text}
 
         async def make_request():
             async with httpx.AsyncClient() as client:
@@ -85,7 +90,7 @@ class AsyncOllamaEmbeddingModel:
                     self.api_url,
                     headers={"Content-Type": "application/json"},
                     json=payload,
-                    timeout=30.0  # 30秒超时
+                    timeout=30.0,  # 30秒超时
                 )
                 response.raise_for_status()
                 return response.json()
@@ -99,9 +104,7 @@ class AsyncOllamaEmbeddingModel:
             return [0.0] * self.embedding_dim
 
     async def get_embeddings_batch(
-            self, texts: List[str],
-            batch_size: int = 10,
-            concurrency_limit: int = 5
+        self, texts: List[str], batch_size: int = 10, concurrency_limit: int = 5
     ) -> List[List[float]]:
         """
         异步批量获取嵌入向量，控制并发请求数量，并添加进度条
@@ -124,19 +127,25 @@ class AsyncOllamaEmbeddingModel:
 
         async def get_with_semaphore(text):
             async with semaphore:
-                return await self.get_embedding(text)  # 假设 self.get_embedding 是异步方法
+                return await self.get_embedding(
+                    text
+                )  # 假设 self.get_embedding 是异步方法
 
-        total_batches = (len(texts) + batch_size - 1) // batch_size  # 计算总批次数（向上取整）
+        total_batches = (
+            len(texts) + batch_size - 1
+        ) // batch_size  # 计算总批次数（向上取整）
 
         with tqdm(total=total_batches, desc="Processing batches") as pbar:  # 创建进度条
             for i in range(0, len(texts), batch_size):
-                batch = texts[i:i + batch_size]
+                batch = texts[i : i + batch_size]
 
                 async with TaskGroup() as tg:
                     tasks = [tg.create_task(get_with_semaphore(text)) for text in batch]
 
                 # 任务组会等待所有任务完成，现在提取结果
-                batch_embeddings = [task.result() for task in tasks]  # tasks 列表来自 TaskGroup
+                batch_embeddings = [
+                    task.result() for task in tasks
+                ]  # tasks 列表来自 TaskGroup
                 all_embeddings.extend(batch_embeddings)
 
                 pbar.update(1)  # 更新进度条
@@ -160,8 +169,7 @@ class AsyncOllamaEmbeddingModel:
         """
         # 并行获取两个嵌入
         embedding1, embedding2 = await asyncio.gather(
-            self.get_embedding(text1),
-            self.get_embedding(text2)
+            self.get_embedding(text1), self.get_embedding(text2)
         )
 
         # 计算余弦相似度
@@ -180,7 +188,9 @@ class AsyncOllamaEmbeddingModel:
         loop = asyncio.get_event_loop()
         return loop.run_until_complete(self.get_embedding(text))
 
-    def get_embeddings_batch_sync(self, texts: List[str], batch_size: int = 10) -> List[List[float]]:
+    def get_embeddings_batch_sync(
+        self, texts: List[str], batch_size: int = 10
+    ) -> List[List[float]]:
         """同步批量获取嵌入的包装方法"""
         loop = asyncio.get_event_loop()
         return loop.run_until_complete(self.get_embeddings_batch(texts, batch_size))
