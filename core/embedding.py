@@ -13,9 +13,9 @@ class AsyncOllamaEmbeddingModel:
     """通过 Ollama API 调用 BGE-M3 嵌入模型"""
 
     def __init__(
-        self,
-        ollama_api_url: str = "http://your-ollama-server:11434",
-        model_name: str = "bge-m3",
+            self,
+            ollama_api_url: str = "http://your-ollama-server:11434",
+            model_name: str = "bge-m3",
     ):
         """
         初始化 Ollama 嵌入模型
@@ -66,6 +66,7 @@ class AsyncOllamaEmbeddingModel:
                         f"API request failed after {max_retries} attempts: {str(e)}"
                     )
                     raise
+        raise
 
     async def get_embedding(self, text: str) -> List[float]:
         """
@@ -104,7 +105,7 @@ class AsyncOllamaEmbeddingModel:
             return [0.0] * self.embedding_dim
 
     async def get_embeddings_batch(
-        self, texts: List[str], batch_size: int = 10, concurrency_limit: int = 5
+            self, texts: List[str], batch_size: int = 10, concurrency_limit: int = 5
     ) -> List[List[float]]:
         """
         异步批量获取嵌入向量，控制并发请求数量，并添加进度条
@@ -132,12 +133,12 @@ class AsyncOllamaEmbeddingModel:
                 )  # 假设 self.get_embedding 是异步方法
 
         total_batches = (
-            len(texts) + batch_size - 1
-        ) // batch_size  # 计算总批次数（向上取整）
+                                len(texts) + batch_size - 1
+                        ) // batch_size  # 计算总批次数（向上取整）
 
         with tqdm(total=total_batches, desc="Processing batches") as pbar:  # 创建进度条
             for i in range(0, len(texts), batch_size):
-                batch = texts[i : i + batch_size]
+                batch = texts[i: i + batch_size]
 
                 async with TaskGroup() as tg:
                     tasks = [tg.create_task(get_with_semaphore(text)) for text in batch]
@@ -189,7 +190,7 @@ class AsyncOllamaEmbeddingModel:
         return loop.run_until_complete(self.get_embedding(text))
 
     def get_embeddings_batch_sync(
-        self, texts: List[str], batch_size: int = 10
+            self, texts: List[str], batch_size: int = 10
     ) -> List[List[float]]:
         """同步批量获取嵌入的包装方法"""
         loop = asyncio.get_event_loop()

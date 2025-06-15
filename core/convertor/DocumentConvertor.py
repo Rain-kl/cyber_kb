@@ -1,5 +1,4 @@
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List
 
 
 class DocumentConvertor(ABC):
@@ -14,7 +13,7 @@ class DocumentConvertor(ABC):
         self.file_path = file_path
 
     @abstractmethod
-    def convert(self) -> List[Dict[str, Any]]:
+    def convert(self) -> str:
         """
         Convert a document into a list of dictionaries.
 

@@ -20,8 +20,8 @@ from typing import Dict, List, Optional, Callable
 from fastapi import UploadFile
 from pydantic import BaseModel
 
-from .user_database import KnowledgeBase, KBUploadRecord
-from .user_file_manager import UserFileManager
+from utils.user_database import KnowledgeBase, KBUploadRecord
+from utils.user_file_manager import UserFileManager
 
 
 class TaskStatus(str, Enum):

@@ -5,11 +5,9 @@ from typing import Callable
 from fastapi import Request
 
 from api.model import QueryResponseModel
-from config import TIKA_SERVER_URL, OLLAMA_API_URL, OLLAMA_MODEL_NAME
-from core.document_processor import DocumentProcessor
+from config import OLLAMA_API_URL, OLLAMA_MODEL_NAME
 from core.embedding import AsyncOllamaEmbeddingModel
 
-document_processor = DocumentProcessor(TIKA_SERVER_URL)
 embedding_model = AsyncOllamaEmbeddingModel(OLLAMA_API_URL, OLLAMA_MODEL_NAME)
 
 

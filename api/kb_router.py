@@ -1,6 +1,3 @@
-import time
-from datetime import datetime
-from pathlib import Path
 from typing import List, Dict, Any
 
 from fastapi import APIRouter, HTTPException, Request
@@ -12,7 +9,8 @@ from api.ext import (
     require_authorization,
 )
 from api.model import OK
-from utils.document_queue import (
+from core.convertor.DoclingDocumentConvertorImpl import DoclingDocumentConvertorImpl
+from core.document_queue import (
     DocumentProcessingManager,
     TaskStatus,
 )
@@ -23,27 +21,9 @@ router = APIRouter()
 
 
 # 模拟的文档转换函数，使用10秒延迟
-def mock_convert_function(filepath: str) -> str:
-    """模拟文档转换函数，延迟10秒"""
-    logger.info(f"开始转换文件: {filepath}")
-    time.sleep(10)  # 模拟10秒的处理时间
-
-    # 读取原始文件内容
-    try:
-        with open(filepath, "r", encoding="utf-8") as f:
-            content = f.read()
-    except UnicodeDecodeError:
-        # 如果不是UTF-8编码，尝试其他编码
-        try:
-            with open(filepath, "r", encoding="gbk") as f:
-                content = f.read()
-        except UnicodeDecodeError:
-            with open(filepath, "rb") as f:
-                content = f.read().decode("utf-8", errors="ignore")
-
-    converted_content = f"[已转换] 文件: {Path(filepath).name}\n转换时间: {datetime.now()}\n原始内容:\n{content}"
-    logger.info(f"文件转换完成: {filepath}")
-    return converted_content
+def convert_function(filepath: str) -> str:
+    convertor = DoclingDocumentConvertorImpl(filepath)
+    return convertor.convert()
 
 
 # 初始化文件管理器和文档处理管理器
@@ -51,7 +31,7 @@ file_manager = LocalUserFileManager("data/user")
 document_manager = DocumentProcessingManager(
     kb_database=default_kb_db,
     file_manager=file_manager,
-    convert_func=mock_convert_function,
+    convert_func=convert_function,
     max_workers=2,
 )
 
@@ -62,9 +42,9 @@ async def root():
     API 根路径，返回服务信息
     """
     with open(
-        "html/kb_demo.html",
-        "r",
-        encoding="utf-8",
+            "html/kb_demo.html",
+            "r",
+            encoding="utf-8",
     ) as f:
         html_content = f.read()
     return HTMLResponse(html_content)
@@ -73,8 +53,8 @@ async def root():
 @router.post("/file/upload", response_model=OK[Dict[str, str]])
 @require_authorization
 async def upload_document(
-    request: Request,
-    file: UploadFile = File(...),
+        request: Request,
+        file: UploadFile = File(...),
 ):
     """
     上传文档到处理队列

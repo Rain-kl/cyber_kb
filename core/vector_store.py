@@ -12,11 +12,11 @@ class VectorStore:
         self.collection = self.chroma_client.get_or_create_collection(collection)
 
     def add_documents(
-        self,
-        document_chunks: List,
-        embeddings: List[List],
-        metadata_list: List,
-        doc_id: str,
+            self,
+            document_chunks: List,
+            embeddings: List[List],
+            metadata_list: List,
+            doc_id: str,
     ):
         """添加文档到向量数据库"""
         ids = [f"{doc_id}_{i}" for i in range(len(document_chunks))]
@@ -57,6 +57,79 @@ class VectorStore:
         results = self.collection.get(limit=limit)
 
         return results
+
+    @staticmethod
+    def chunk_text(text: str, chunk_size: int = 3000, overlap: int = 500) -> list[str]:
+        """
+        Splits a text into overlapping chunks, ensuring each chunk ends with a sentence-ending punctuation mark.
+
+        Args:
+            text (str): The input text to be chunked.
+            chunk_size (int): The maximum desired size (in characters) for each chunk. Defaults to 5000.
+            overlap (int): The desired number of overlapping characters between consecutive chunks. Defaults to 1000.
+
+        Returns:
+            list[str]: A list of text chunks.
+
+        Raises:
+            ValueError: If chunk_size is less than or equal to overlap, as this prevents meaningful progress.
+        """
+        actual_end_index = 0
+        sentence_enders = {".", "?", "!", "。", "？", "！", "\n"}
+        if not text:
+            return []
+
+        if chunk_size <= overlap:
+            raise ValueError(
+                f"chunk_size ({chunk_size}) must be greater than overlap ({overlap})"
+            )
+
+        chunks = []
+        start_index = 0
+        text_length = len(text)
+
+        while start_index < text_length:
+            ideal_end_index = min(start_index + chunk_size, text_length)
+            if ideal_end_index == text_length:
+                actual_end_index = text_length
+            else:
+                found_ender = False
+                for i in range(ideal_end_index - 1, start_index - 1, -1):
+
+                    if text[i] in sentence_enders:
+
+                        if (
+                                i >= start_index
+                        ):  # Ensure the ender is within the current theoretical chunk slice
+                            actual_end_index = i + 1  # Include the punctuation mark
+                            found_ender = True
+                            break
+                        else:
+                            continue
+                if not found_ender:
+                    actual_end_index = ideal_end_index
+
+            chunk = text[start_index:actual_end_index]
+            if chunk:  # Avoid adding empty chunks
+                chunks.append(chunk)
+
+            if actual_end_index >= text_length:
+                break
+
+            next_start_index = actual_end_index - overlap
+
+            if next_start_index <= start_index:
+                print(
+                    f"Warning: Potential stall detected. Chunk end: {actual_end_index}, Overlap: {overlap}, Current start: {start_index}. Calculated next start: {next_start_index}. Forcing minimal advancement."
+                )
+                start_index += 1
+            else:
+                start_index = next_start_index
+
+            # Safety clamp (though the loop condition `start_index < text_length` should suffice)
+            start_index = min(start_index, text_length)
+
+        return chunks
 
 
 class KBVectorStore(VectorStore):
