@@ -55,6 +55,7 @@ document_manager = DocumentProcessingManager(
     max_workers=2,
 )
 
+
 @router.get("/", summary="API 服务信息")
 async def root():
     """
@@ -72,8 +73,8 @@ async def root():
 @router.post("/file/upload", response_model=OK[Dict[str, str]])
 @require_authorization
 async def upload_document(
-        request: Request,
-        file: UploadFile = File(...),
+    request: Request,
+    file: UploadFile = File(...),
 ):
     """
     上传文档到处理队列

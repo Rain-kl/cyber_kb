@@ -51,18 +51,18 @@ class UserFileManager(ABC):
 
     @abstractmethod
     def save_uploaded_file(
-            self, file: UploadFile, user_token: str, doc_id: str
+        self, file: UploadFile, user_token: str, doc_id: str
     ) -> FilePath:
         """保存用户上传的文件"""
         pass
 
     @abstractmethod
     def save_processed_content(
-            self,
-            user_token: str,
-            doc_id: str,
-            content: str,
-            mime_type: str = "text/plain",
+        self,
+        user_token: str,
+        doc_id: str,
+        content: str,
+        mime_type: str = "text/plain",
     ) -> bool:
         """保存处理后的文档内容, 当前仅支持文本内容"""
         pass
@@ -160,7 +160,7 @@ class LocalUserFileManager(UserFileManager):
         return FilePath(root=user_base, original=uploads_dir, processed=uploads_dir)
 
     def save_uploaded_file(
-            self, file: UploadFile, user_token: str, doc_id: str
+        self, file: UploadFile, user_token: str, doc_id: str
     ) -> FilePath:
         """保存用户上传的文件"""
 
@@ -189,11 +189,11 @@ class LocalUserFileManager(UserFileManager):
             raise e
 
     def save_processed_content(
-            self,
-            user_token: str,
-            doc_id: str,
-            content: str,
-            mime_type: str = "text/plain",
+        self,
+        user_token: str,
+        doc_id: str,
+        content: str,
+        mime_type: str = "text/plain",
     ) -> bool:
         """保存处理后的文档内容"""
         # 获取处理目录
@@ -280,9 +280,7 @@ class LocalUserFileManager(UserFileManager):
         except Exception:
             return False
 
-    def list_user_docs(
-            self, user_token: str
-    ) -> List[Dict]:
+    def list_user_docs(self, user_token: str) -> List[Dict]:
         """列出用户的所有文档"""
         docs = []
         user_base = self._get_user_base_dir(user_token)

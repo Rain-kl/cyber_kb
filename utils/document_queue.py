@@ -158,12 +158,12 @@ class DocumentProcessingManager:
     """文档处理管理器 - 整合队列、数据库和文件管理"""
 
     def __init__(
-            self,
-            kb_database: KnowledgeBase,
-            file_manager: UserFileManager,
-            convert_func: Callable[[str], str],
-            max_workers: int = 3,
-            queue_impl: Optional[DocumentQueue] = None,
+        self,
+        kb_database: KnowledgeBase,
+        file_manager: UserFileManager,
+        convert_func: Callable[[str], str],
+        max_workers: int = 3,
+        queue_impl: Optional[DocumentQueue] = None,
     ):
         """
         初始化文档处理管理器
@@ -288,7 +288,7 @@ class DocumentProcessingManager:
             )
 
     def submit_task(
-            self, user_token: str, file: UploadFile, doc_id: Optional[str] = None
+        self, user_token: str, file: UploadFile, doc_id: Optional[str] = None
     ) -> str:
         """
         提交文档处理任务
@@ -336,7 +336,7 @@ class DocumentProcessingManager:
 
     def get_task_status(self, doc_id: str) -> Optional[DocumentTask]:
         """获取任务状态"""
-        rsp:KBUploadRecord=self.kb_database.get_upload_record(doc_id)
+        rsp: KBUploadRecord = self.kb_database.get_upload_record(doc_id)
         return DocumentTask(
             doc_id=rsp.doc_id,
             user_token=rsp.user_token,
@@ -345,7 +345,7 @@ class DocumentProcessingManager:
             created_at=rsp.upload_time,
             started_at=rsp.process_start_time,
             completed_at=rsp.process_end_time,
-            err_msg=rsp.err_msg
+            err_msg=rsp.err_msg,
         )
 
     def get_queue_status(self) -> QueueStatus:
