@@ -1,148 +1,213 @@
+import time
+from datetime import datetime
+from pathlib import Path
+from typing import List, Dict, Any
+
 from fastapi import APIRouter, HTTPException, Request
-from fastapi import UploadFile, File, Query
-from fastapi.responses import JSONResponse
+from fastapi import UploadFile, File
+from fastapi.responses import HTMLResponse
 from loguru import logger
+
 from api.ext import (
     require_authorization,
-    parse_query_response,
-    document_processor,
-    embedding_model,
 )
-from api.model import QueryResponseModel, OK
-from core.vector_store import KBVectorStore
+from api.model import OK
+from utils.document_queue import (
+    DocumentProcessingManager,
+    TaskStatus,
+)
+from utils.user_database import default_kb_db, KBUploadRecord
+from utils.user_file_manager import LocalUserFileManager
 
-router = APIRouter(tags=["knowledge_base"])
-authorization = "test"
+router = APIRouter()
 
 
-@router.get("/documents/list")
-async def get_documents_list(
-    request: Request,
-    limit: int = Query(10, description="返回结果数量"),
-):
-    """获取知识库中的文档列表"""
+# 模拟的文档转换函数，使用10秒延迟
+def mock_convert_function(filepath: str) -> str:
+    """模拟文档转换函数，延迟10秒"""
+    logger.info(f"开始转换文件: {filepath}")
+    time.sleep(10)  # 模拟10秒的处理时间
+
+    # 读取原始文件内容
     try:
-        # authorization = request.headers.get("authorization", "").replace("Bearer ", "")
-        authorization = "test"
-        vector_store = KBVectorStore(authorization)
-        # vector_store = VectorStore("documents")
-        results = vector_store.list_all_documents(limit)
+        with open(filepath, "r", encoding="utf-8") as f:
+            content = f.read()
+    except UnicodeDecodeError:
+        # 如果不是UTF-8编码，尝试其他编码
+        try:
+            with open(filepath, "r", encoding="gbk") as f:
+                content = f.read()
+        except UnicodeDecodeError:
+            with open(filepath, "rb") as f:
+                content = f.read().decode("utf-8", errors="ignore")
 
-        return OK(data=results)
+    converted_content = f"[已转换] 文件: {Path(filepath).name}\n转换时间: {datetime.now()}\n原始内容:\n{content}"
+    logger.info(f"文件转换完成: {filepath}")
+    return converted_content
 
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"获取文档列表失败: {str(e)}")
+
+# 初始化文件管理器和文档处理管理器
+file_manager = LocalUserFileManager("data/user")
+document_manager = DocumentProcessingManager(
+    kb_database=default_kb_db,
+    file_manager=file_manager,
+    convert_func=mock_convert_function,
+    max_workers=2,
+)
+
+@router.get("/", summary="API 服务信息")
+async def root():
+    """
+    API 根路径，返回服务信息
+    """
+    with open(
+        "html/kb_demo.html",
+        "r",
+        encoding="utf-8",
+    ) as f:
+        html_content = f.read()
+    return HTMLResponse(html_content)
 
 
-@router.post("/documents/upload")
-# @require_authorization
+@router.post("/file/upload", response_model=OK[Dict[str, str]])
+@require_authorization
 async def upload_document(
-    request: Request,
-    file: UploadFile = File(...),
+        request: Request,
+        file: UploadFile = File(...),
 ):
-    """上传文档到知识库"""
-    # try:
-    # 保存文件
-    # authorization = request.headers.get("authorization", "").replace("Bearer ", "")
-    authorization = "test"
-    vector_store = KBVectorStore(authorization)
-
-    file_path, filename, md5hash = document_processor.save_file(file)
-
-    # 提取内容
+    """
+    上传文档到处理队列
+    """
     try:
-        response = document_processor.process_document(file_path)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"tika processing error: {str(e)}")
-    logger.info(f"tika processing complete! total nums: {len(f"{response}")}")
-    content = response["content"]
-    metadata = response["metadata"]
-    # 文本分块
-    chunks: list = document_processor.chunk_text(content)
-    logger.info(f"chunk text complete! total nums: {len(chunks)}")
+        # 从request.state获取用户token（由require_authorization装饰器设置）
+        user_token = getattr(request.state, "authorization", None)
+        if not user_token:
+            raise HTTPException(status_code=401, detail="未找到授权信息")
 
-    if not chunks:
-        return JSONResponse(
-            status_code=400, content={"message": "无法从文档中提取内容"}
+        # 提交任务到处理队列
+        doc_id = document_manager.submit_task(user_token, file)
+
+        logger.info(f"文档已提交到处理队列: {doc_id}, 文件名: {file.filename}")
+
+        return OK(
+            data={
+                "doc_id": doc_id,
+                "filename": file.filename,
+                "status": "submitted",
+                "message": "文档已提交到处理队列",
+            }
         )
 
-    # 获取嵌入向量
-    embeddings = await embedding_model.get_embeddings_batch(chunks)
-
-    # 准备元数据
-    doc_id = md5hash
-    metadata_list = [
-        {
-            "doc_id": doc_id,
-            "filename": filename,
-            "chunk_index": i,
-            "mime_type": metadata.get("Content-Type", "unknown"),
-            "total_chunks": len(chunks),
-        }
-        for i in range(len(chunks))
-    ]
-
-    # 存储到向量数据库
-    vector_store.add_documents(chunks, embeddings, metadata_list, doc_id)
-
-    return {
-        "message": "文档上传成功",
-        "doc_id": doc_id,
-        "filename": filename,
-        "chunk_count": len(chunks),
-        "summary": response["content"][:100] + "...",
-    }
-
-    # except Exception as e:
-    #     raise HTTPException(status_code=500, detail=f"文档处理失败: {str(e)}")
+    except Exception as e:
+        logger.error(f"上传文档失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"上传失败: {str(e)}")
 
 
-@router.get("/query/embedding")
+@router.get("/file/status/{doc_id}", response_model=OK[Dict[str, Any]])
 @require_authorization
-async def search(
-    request: Request,
-    query: str = Query(..., description="搜索查询"),
-    top_k: int = Query(5, description="返回结果数量"),
-) -> OK:
-    """搜索知识库"""
+async def get_task_status(request: Request, doc_id: str):
+    """
+    获取任务状态
+    """
     try:
-        authorization = request.headers.get("authorization", "").replace("Bearer ", "")
-        vector_store = KBVectorStore(authorization)
-        # vector_store = VectorStore("documents")
+        user_token = getattr(request.state, "authorization", None)
+        task = document_manager.get_task_status(doc_id)
 
-        # 获取查询的嵌入向量
-        query_embedding = await embedding_model.get_embedding(query)
+        if not task:
+            raise HTTPException(status_code=404, detail="任务不存在")
+        if task.status == TaskStatus.COMPLETED:
+            # 获取处理后的文件内容
+            original_dir, processed_file_path = file_manager.get_doc_dirs(user_token)
 
-        # 搜索向量数据库
-        results = vector_store.search_by_embedding(query_embedding, top_k)
+            if not processed_file_path.exists():
+                raise HTTPException(status_code=404, detail="处理后的文件不存在")
+            content = file_manager.get_processed_file_content(user_token, doc_id)
+        else:
+            content = None
 
-        response_items: list[QueryResponseModel] = parse_query_response(results)
+        # 转换为字典格式
+        task_dict = {
+            "doc_id": task.doc_id,
+            "user_token": task.user_token,
+            "filename": task.filename,
+            "status": task.status,
+            "created_at": task.created_at.isoformat() if task.created_at else None,
+            "started_at": task.started_at.isoformat() if task.started_at else None,
+            "completed_at": (
+                task.completed_at.isoformat() if task.completed_at else None
+            ),
+            "result": {},
+            "err_msg": task.err_msg,
+        }
 
-        return OK(data=response_items)
+        if content:
+            task_dict["result"]["content"] = content
+
+        return OK(data=task_dict)
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"获取任务状态失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"获取任务状态失败: {str(e)}")
+
+
+@router.get("/queue/status", response_model=OK[Dict[str, Any]])
+async def get_queue_status():
+    """
+    获取队列状态
+    """
+    try:
+        queue_status = document_manager.get_queue_status()
+
+        status_dict = {
+            "queue_size": queue_status.queue_size,
+            "processing_tasks": queue_status.processing_tasks,
+            "completed_count": queue_status.completed_count,
+            "failed_count": queue_status.failed_count,
+        }
+
+        return OK(data=status_dict)
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"搜索失败: {str(e)}")
+        logger.error(f"获取队列状态失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"获取队列状态失败: {str(e)}")
 
 
-#
-# @router.get("/query/keyword")
-# @require_authorization
-# async def search_by_keyword(
-#         request: Request,
-#         keyword: str = Query(..., description="关键字搜索"),
-#         top_k: int = Query(5, description="返回结果数量"),
-# ) -> OK:
-#     """基于关键字搜索知识库"""
-#     try:
-#         authorization = request.headers.get("authorization", "").replace("Bearer ", "")
-#         vector_store = VectorStore(authorization)
-#         # vector_store = VectorStore("documents")
-#         results = vector_store.search_by_keyword(keyword, top_k)
-#
-#         response_items: list[QueryResponseModel] = parse_query_response(results)
-#
-#         return OK(data=response_items)
-#
-#     except Exception as e:
-#         logging.exception(e)
-#         raise HTTPException(status_code=500, detail=f"关键字搜索失败: {str(e)}")
+@router.get("/tasks", response_model=OK[List[Dict[str, Any]]])
+@require_authorization
+async def get_tasks(request: Request):
+    """
+    获取用户所有任务
+    """
+    try:
+        user_token = getattr(request.state, "authorization", None)
+        tasks: list[KBUploadRecord] = default_kb_db.get_user_uploads(user_token)
+
+        tasks_list = []
+        for task in tasks:
+            task_dict = {
+                "doc_id": task.doc_id,
+                "user_token": task.user_token,
+                "filename": task.filename,
+                "status": task.status,
+                "created_at": (
+                    task.upload_time.isoformat() if task.upload_time else None
+                ),
+                "started_at": (
+                    task.process_start_time.isoformat()
+                    if task.process_start_time
+                    else None
+                ),
+                "completed_at": (
+                    task.process_end_time.isoformat() if task.process_end_time else None
+                ),
+                "err_msg": task.err_msg,
+            }
+            tasks_list.append(task_dict)
+
+        return OK(data=tasks_list)
+
+    except Exception as e:
+        logger.error(f"获取所有任务失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"获取所有任务失败: {str(e)}")

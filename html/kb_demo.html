@@ -1,0 +1,741 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta content="width=device-width, initial-scale=1.0" name="viewport">
+    <title>知识库文档处理 API 测试界面</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+
+        .container {
+            background: white;
+            border-radius: 8px;
+            padding: 30px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        h1 {
+            color: #333;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .section {
+            margin-bottom: 30px;
+            padding: 20px;
+            border: 1px solid #e0e0e0;
+            border-radius: 6px;
+            background-color: #fafafa;
+        }
+
+        .section h2 {
+            margin-top: 0;
+            color: #555;
+        }
+
+        .upload-area {
+            border: 2px dashed #ccc;
+            border-radius: 6px;
+            padding: 30px;
+            text-align: center;
+            margin-bottom: 20px;
+            transition: border-color 0.3s;
+        }
+
+        .upload-area:hover {
+            border-color: #007bff;
+        }
+
+        .upload-area.dragover {
+            border-color: #28a745;
+            background-color: #f8fff8;
+        }
+
+        input[type="file"] {
+            margin: 10px 0;
+        }
+
+        button {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+
+        button:hover {
+            background-color: #0056b3;
+        }
+
+        button:disabled {
+            background-color: #6c757d !important;
+            cursor: not-allowed;
+            opacity: 0.6;
+        }
+
+        #selectedFileName {
+            font-size: 0.9em;
+            padding: 5px;
+            background-color: #e9ecef;
+            border-radius: 4px;
+            min-height: 20px;
+            margin: 10px 0;
+            max-height: 100px;
+            overflow-y: auto;
+        }
+
+        #selectedFileName:empty {
+            display: none;
+        }
+
+        .file-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 5px;
+            margin: 2px 0;
+            background-color: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 3px;
+        }
+
+        .file-item .file-name {
+            flex: 1;
+            margin-right: 10px;
+        }
+
+        .file-item .remove-btn {
+            background-color: #dc3545;
+            color: white;
+            border: none;
+            padding: 2px 6px;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 0.8em;
+        }
+
+        .file-item .remove-btn:hover {
+            background-color: #c82333;
+        }
+
+        .status {
+            margin: 10px 0;
+            padding: 10px;
+            border-radius: 4px;
+            font-weight: bold;
+        }
+
+        .status.success {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+
+        .status.error {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+
+        .status.info {
+            background-color: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+
+        .task-list {
+            max-height: 400px;
+            overflow-y: auto;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 10px;
+        }
+
+        .task-item {
+            padding: 10px;
+            margin: 5px 0;
+            border: 1px solid #eee;
+            border-radius: 4px;
+            background-color: white;
+        }
+
+        .task-header {
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+
+        .task-meta {
+            font-size: 0.9em;
+            color: #666;
+        }
+
+        .result-content {
+            max-height: 300px;
+            overflow-y: auto;
+            background-color: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            padding: 15px;
+            font-family: monospace;
+            white-space: pre-wrap;
+            margin-top: 10px;
+        }
+
+        .queue-info {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .queue-stat {
+            background: white;
+            padding: 15px;
+            border-radius: 6px;
+            text-align: center;
+            border: 1px solid #e0e0e0;
+        }
+
+        .queue-stat .number {
+            font-size: 2em;
+            font-weight: bold;
+            color: #007bff;
+        }
+
+        .queue-stat .label {
+            color: #666;
+            margin-top: 5px;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <h1>� 知识库文档处理系统</h1>
+
+        <!-- 认证设置 -->
+        <div class="section">
+            <h2>🔐 认证设置</h2>
+            <div>
+                <input id="authToken" placeholder="输入用户Token（默认：test_user_token）" style="width: 400px; padding: 8px; margin-right: 10px;"
+                    type="text" value="test_user_token">
+                <button onclick="saveAuthToken()">保存Token</button>
+            </div>
+            <div id="authStatus"></div>
+        </div>
+
+        <!-- 文件上传区域 -->
+        <div class="section">
+            <h2>📤 上传文档文件</h2>
+            <div class="upload-area" id="uploadArea">
+                <p>拖拽文档文件到此处，或点击下方按钮选择文件</p>
+                <div id="selectedFileName" style="margin: 10px 0; color: #666; font-style: italic;"></div>
+            </div>
+            <div style="margin-top: 10px;">
+                <input accept=".pdf,.txt,.doc,.docx,.md" id="fileInput" multiple style="display: none;" type="file" />
+                <button onclick="selectFile()" style="margin-right: 10px;">选择文件</button>
+                <button disabled id="uploadBtn" onclick="uploadFiles()">上传文件</button>
+                <button disabled id="clearBtn" onclick="clearFiles()"
+                    style="background-color: #dc3545; margin-left: 10px;">清空文件</button>
+            </div>
+            <div id="uploadStatus"></div>
+        </div>
+
+        <!-- 队列状态 -->
+        <div class="section">
+            <h2>📊 队列状态</h2>
+            <div class="queue-info" id="queueInfo">
+                <div class="queue-stat">
+                    <div class="number" id="queueSize">-</div>
+                    <div class="label">队列中</div>
+                </div>
+                <div class="queue-stat">
+                    <div class="number" id="processingCount">-</div>
+                    <div class="label">处理中</div>
+                </div>
+                <div class="queue-stat">
+                    <div class="number" id="completedCount">-</div>
+                    <div class="label">已完成</div>
+                </div>
+                <div class="queue-stat">
+                    <div class="number" id="failedCount">-</div>
+                    <div class="label">失败</div>
+                </div>
+            </div>
+            <button onclick="refreshQueueStatus()">刷新状态</button>
+            <button onclick="refreshAllTasks()">刷新任务列表</button>
+        </div>
+
+        <!-- 任务列表 -->
+        <div class="section">
+            <h2>📋 任务列表</h2>
+            <div class="task-list" id="taskList">
+                <p style="text-align: center; color: #666;">暂无任务</p>
+            </div>
+        </div>
+
+        <!-- 任务结果 -->
+        <div class="section">
+            <h2>📄 任务详情</h2>
+            <div>
+                <input id="taskIdInput" placeholder="输入文档ID" style="width: 300px; padding: 8px; margin-right: 10px;"
+                    type="text">
+                <button onclick="getTaskResult()">获取详情</button>
+            </div>
+            <div id="taskResult"></div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = 'http://localhost:8000';
+
+        // 认证Token
+        let authToken = 'test_user_token';
+
+        // 获取认证头部
+        function getAuthHeaders() {
+            return {
+                'Authorization': authToken
+            };
+        }
+
+        // 保存认证Token
+        function saveAuthToken() {
+            const tokenInput = document.getElementById('authToken');
+            authToken = tokenInput.value.trim() || 'test_user_token';
+            showStatus('authStatus', `Token已保存: ${authToken}`, 'success');
+        }
+
+        // 上传区域拖拽处理
+        const uploadArea = document.getElementById('uploadArea');
+        const fileInput = document.getElementById('fileInput');
+        const uploadBtn = document.getElementById('uploadBtn');
+        const clearBtn = document.getElementById('clearBtn');
+        const selectedFileName = document.getElementById('selectedFileName');
+
+        // 存储选择的文件
+        let selectedFiles = [];
+
+        // 拖拽事件处理
+        uploadArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadArea.classList.add('dragover');
+        });
+
+        uploadArea.addEventListener('dragleave', (e) => {
+            e.preventDefault();
+            uploadArea.classList.remove('dragover');
+        });
+
+        uploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadArea.classList.remove('dragover');
+
+            const files = Array.from(e.dataTransfer.files);
+            handleFileSelection(files);
+        });
+
+        // 文件选择变化事件
+        fileInput.addEventListener('change', (e) => {
+            const files = Array.from(e.target.files);
+            handleFileSelection(files);
+        });
+
+        // 选择文件函数
+        function selectFile() {
+            fileInput.click();
+        }
+
+        // 处理文件选择
+        function handleFileSelection(files) {
+            // 支持多种文档格式
+            const supportedExtensions = ['.pdf', '.txt', '.doc', '.docx', '.md'];
+            const supportedFiles = files.filter(file => {
+                const extension = file.name.toLowerCase().substring(file.name.lastIndexOf('.'));
+                return supportedExtensions.includes(extension);
+            });
+
+            if (supportedFiles.length === 0) {
+                showStatus('uploadStatus', '只支持PDF、TXT、DOC、DOCX、MD格式文件', 'error');
+                return;
+            }
+
+            if (supportedFiles.length < files.length) {
+                showStatus('uploadStatus', '已过滤掉不支持的文件格式', 'info');
+            }
+
+            // 添加到选择的文件列表（避免重复）
+            supportedFiles.forEach(file => {
+                const isDuplicate = selectedFiles.some(f => f.name === file.name && f.size === file.size);
+                if (!isDuplicate) {
+                    selectedFiles.push(file);
+                }
+            });
+
+            updateFileDisplay();
+            updateButtons();
+
+            // 清除之前的状态信息
+            document.getElementById('uploadStatus').innerHTML = '';
+        }
+
+        // 更新文件显示
+        function updateFileDisplay() {
+            if (selectedFiles.length === 0) {
+                selectedFileName.innerHTML = '';
+                return;
+            }
+
+            const html = selectedFiles.map((file, index) => `
+                <div class="file-item">
+                    <span class="file-name">📄 ${file.name} (${formatFileSize(file.size)})</span>
+                    <button class="remove-btn" onclick="removeFile(${index})">删除</button>
+                </div>
+            `).join('');
+
+            selectedFileName.innerHTML = html;
+        }
+
+        // 移除文件
+        function removeFile(index) {
+            selectedFiles.splice(index, 1);
+            updateFileDisplay();
+            updateButtons();
+        }
+
+        // 清空所有文件
+        function clearFiles() {
+            selectedFiles = [];
+            fileInput.value = '';
+            updateFileDisplay();
+            updateButtons();
+            document.getElementById('uploadStatus').innerHTML = '';
+        }
+
+        // 更新按钮状态
+        function updateButtons() {
+            const hasFiles = selectedFiles.length > 0;
+            uploadBtn.disabled = !hasFiles;
+            clearBtn.disabled = !hasFiles;
+
+            if (hasFiles) {
+                uploadBtn.style.backgroundColor = '#007bff';
+                clearBtn.style.backgroundColor = '#dc3545';
+            } else {
+                uploadBtn.style.backgroundColor = '#6c757d';
+                clearBtn.style.backgroundColor = '#6c757d';
+            }
+        }
+
+        // 格式化文件大小
+        function formatFileSize(bytes) {
+            if (bytes === 0) return '0 Bytes';
+            const k = 1024;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+        }
+
+        // 上传文件
+        async function uploadFiles() {
+            if (selectedFiles.length === 0) {
+                showStatus('uploadStatus', '请先选择文件', 'error');
+                return;
+            }
+
+            // 禁用上传按钮，防止重复上传
+            uploadBtn.disabled = true;
+            clearBtn.disabled = true;
+            uploadBtn.style.backgroundColor = '#6c757d';
+            clearBtn.style.backgroundColor = '#6c757d';
+
+            const results = [];
+            let successCount = 0;
+            let failCount = 0;
+
+            showStatus('uploadStatus', `正在上传 ${selectedFiles.length} 个文件...`, 'info');
+
+            // 逐个上传文件
+            for (let i = 0; i < selectedFiles.length; i++) {
+                const file = selectedFiles[i];
+
+                showStatus('uploadStatus', `正在上传第 ${i + 1}/${selectedFiles.length} 个文件: ${file.name}`, 'info');
+
+                try {
+                    const formData = new FormData();
+                    formData.append('file', file);
+
+                    const response = await fetch(`${API_BASE}/api/kb/file/upload`, {
+                        method: 'POST',
+                        headers: getAuthHeaders(),
+                        body: formData
+                    });
+
+                    const result = await response.json();
+
+                    if (result.ok && result.data) {
+                        results.push({
+                            filename: file.name,
+                            success: true,
+                            doc_id: result.data.doc_id
+                        });
+                        successCount++;
+                    } else {
+                        results.push({
+                            filename: file.name,
+                            success: false,
+                            error: result.message || '未知错误'
+                        });
+                        failCount++;
+                    }
+                } catch (error) {
+                    results.push({
+                        filename: file.name,
+                        success: false,
+                        error: error.message
+                    });
+                    failCount++;
+                }
+            }
+
+            // 显示上传结果
+            let statusMessage = `上传完成！成功: ${successCount}, 失败: ${failCount}`;
+            if (results.length > 0) {
+                statusMessage += '\n\n详细结果:\n';
+                results.forEach(result => {
+                    if (result.success) {
+                        statusMessage += `✅ ${result.filename} - 文档ID: ${result.doc_id}\n`;
+                    } else {
+                        statusMessage += `❌ ${result.filename} - 错误: ${result.error}\n`;
+                    }
+                });
+            }
+
+            const statusType = failCount === 0 ? 'success' : (successCount === 0 ? 'error' : 'info');
+            showStatus('uploadStatus', statusMessage, statusType);
+
+            // 如果有成功的上传，将第一个文档ID填入查询框
+            const firstSuccess = results.find(r => r.success);
+            if (firstSuccess) {
+                document.getElementById('taskIdInput').value = firstSuccess.doc_id;
+            }
+
+            // 重置文件选择状态
+            clearFiles();
+
+            // 刷新状态
+            refreshQueueStatus();
+            refreshAllTasks();
+        }
+
+        // 刷新队列状态
+        async function refreshQueueStatus() {
+            try {
+                const response = await fetch(`${API_BASE}/api/kb/queue/status`);
+                const result = await response.json();
+
+                if (result.ok && result.data) {
+                    const data = result.data;
+                    document.getElementById('queueSize').textContent = data.queue_size || 0;
+                    document.getElementById('processingCount').textContent = (data.processing_tasks && data.processing_tasks.length) || 0;
+                    document.getElementById('completedCount').textContent = data.completed_count || 0;
+                    document.getElementById('failedCount').textContent = data.failed_count || 0;
+                }
+            } catch (error) {
+                console.error('获取队列状态失败:', error);
+            }
+        }
+
+        // 刷新所有任务
+        async function refreshAllTasks() {
+            try {
+                const response = await fetch(`${API_BASE}/api/kb/tasks`, {
+                    headers: getAuthHeaders()
+                });
+                const result = await response.json();
+
+                if (result.ok && result.data) {
+                    displayTasks(result.data);
+                } else {
+                    console.error('API返回失败:', result);
+                    const taskList = document.getElementById('taskList');
+                    taskList.innerHTML = '<p style="text-align: center; color: #dc3545;">获取任务列表失败</p>';
+                }
+            } catch (error) {
+                console.error('获取任务列表失败:', error);
+                const taskList = document.getElementById('taskList');
+                taskList.innerHTML = '<p style="text-align: center; color: #dc3545;">网络错误</p>';
+            }
+        }
+
+        // 显示任务列表
+        function displayTasks(tasks) {
+            const taskList = document.getElementById('taskList');
+
+            if (!tasks || tasks.length === 0) {
+                taskList.innerHTML = '<p style="text-align: center; color: #666;">暂无任务</p>';
+                return;
+            }
+
+            const html = tasks.map(task => `
+                <div class="task-item">
+                    <div class="task-header">
+                        📄 ${task.filename}
+                        <span style="float: right; color: ${getStatusColor(task.status)};">
+                            ${getStatusText(task.status)}
+                        </span>
+                    </div>
+                    <div class="task-meta">
+                        文档ID: ${task.doc_id}<br>
+                        创建时间: ${formatTime(task.created_at)}<br>
+                        ${task.started_at ? `开始时间: ${formatTime(task.started_at)}<br>` : ''}
+                        ${task.completed_at ? `完成时间: ${formatTime(task.completed_at)}` : ''}
+                        ${task.err_msg ? `<br><span style="color: #dc3545;">错误: ${task.err_msg}</span>` : ''}
+                    </div>
+                    <button onclick="getTaskResult('${task.doc_id}')" style="margin-top: 10px;">查看详情</button>
+                </div>
+            `).join('');
+
+            taskList.innerHTML = html;
+        }
+
+        // 获取任务结果
+        async function getTaskResult(docId) {
+            if (!docId) {
+                docId = document.getElementById('taskIdInput').value.trim();
+            }
+
+            if (!docId) {
+                showTaskResult('请输入文档ID', 'error');
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_BASE}/api/kb/file/status/${docId}`, {
+                    headers: getAuthHeaders()
+                });
+                const result = await response.json();
+
+                if (response.ok && result.ok) {
+                    displayTaskResult(result.data);
+                } else {
+                    showTaskResult(`获取任务详情失败: ${result.message || '未知错误'}`, 'error');
+                }
+            } catch (error) {
+                showTaskResult(`获取任务详情失败: ${error.message}`, 'error');
+            }
+        }
+
+        // 显示任务结果
+        function displayTaskResult(result) {
+            const resultDiv = document.getElementById('taskResult');
+
+            let html = `
+                <div class="status info">
+                    <strong>任务信息</strong><br>
+                    文档ID: ${result.doc_id}<br>
+                    文件名: ${result.filename}<br>
+                    状态: ${getStatusText(result.status)}<br>
+                    创建时间: ${formatTime(result.created_at)}<br>
+                    ${result.started_at ? `开始时间: ${formatTime(result.started_at)}<br>` : ''}
+                    ${result.completed_at ? `完成时间: ${formatTime(result.completed_at)}` : ''}
+                </div>
+            `;
+
+            if (result.status === 'completed' && result.result && result.result.content) {
+                html += `
+                    <div class="status success">
+                        处理成功！
+                    </div>
+                    <div>
+                        <strong>处理结果内容:</strong>
+                        <div class="result-content">${result.result.content}</div>
+                    </div>
+                `;
+            } else if (result.status === 'failed') {
+                html += `
+                    <div class="status error">
+                        处理失败: ${result.err_msg || '未知错误'}
+                    </div>
+                `;
+            } else if (result.status === 'processing') {
+                html += `
+                    <div class="status info">
+                        任务正在处理中，请稍后...
+                    </div>
+                `;
+            } else if (result.status === 'pending' || result.status === 'submitted') {
+                html += `
+                    <div class="status info">
+                        任务在队列中等待处理...
+                    </div>
+                `;
+            }
+
+            resultDiv.innerHTML = html;
+        }
+
+        // 辅助函数
+        function showStatus(elementId, message, type) {
+            const element = document.getElementById(elementId);
+            element.innerHTML = `<div class="status ${type}">${message}</div>`;
+        }
+
+        function showTaskResult(message, type) {
+            const element = document.getElementById('taskResult');
+            element.innerHTML = `<div class="status ${type}">${message}</div>`;
+        }
+
+        function getStatusColor(status) {
+            const colors = {
+                'submitted': '#6c757d',
+                'pending': '#ffc107',
+                'processing': '#17a2b8',
+                'completed': '#28a745',
+                'failed': '#dc3545'
+            };
+            return colors[status] || '#6c757d';
+        }
+
+        function getStatusText(status) {
+            const texts = {
+                'submitted': '已提交',
+                'pending': '等待中',
+                'processing': '处理中',
+                'completed': '已完成',
+                'failed': '失败'
+            };
+            return texts[status] || status;
+        }
+
+        function formatTime(timeString) {
+            return new Date(timeString).toLocaleString('zh-CN');
+        }
+
+        // 页面加载时初始化
+        document.addEventListener('DOMContentLoaded', () => {
+            // 初始化认证Token
+            saveAuthToken();
+
+            refreshQueueStatus();
+            refreshAllTasks();
+
+            // 每5秒自动刷新状态
+            setInterval(() => {
+                refreshQueueStatus();
+                refreshAllTasks();
+            }, 5000);
+        });
+    </script>
+</body>
+
+</html>

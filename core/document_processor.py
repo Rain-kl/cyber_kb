@@ -1,11 +1,10 @@
 # app/core/document_processor.py
 import hashlib
-from abc import ABC, abstractmethod
-from loguru import logger as logging
 import os
 from typing import Dict, Any, TypedDict
 
 import requests
+from loguru import logger as logging
 
 
 class DocumentParsedModel(TypedDict):
@@ -14,164 +13,26 @@ class DocumentParsedModel(TypedDict):
     metadata: Dict[str, Any]
 
 
-class DocumentConvertor(ABC):
-    """文档转换器接口"""
-
-    def __init__(self, upload_dir: str = "./data/uploads"):
-        self.upload_dir = upload_dir
-        if not os.path.exists(self.upload_dir):
-            os.makedirs(self.upload_dir)
-
-    @abstractmethod
-    def extract_text(self, file_path: str) -> str:
-        """从文件中提取文本"""
-        pass
-
-    @abstractmethod
-    def extract_metadata(self, file_path: str) -> Dict[str, Any]:
-        """从文件中提取元数据"""
-        pass
-
-    def process_document(self, file_path: str) -> DocumentParsedModel:
-        """
-        处理文档并返回元数据和内容
-
-        Args:
-            file_path: 文件路径
-
-        Returns:
-            包含文档元数据和内容的字典
-        """
-        if not os.path.exists(file_path):
-            raise FileNotFoundError(f"File not found: {file_path}")
-
-        filename = os.path.basename(file_path)
-
-        # 提取文本内容
-        content = self.extract_text(file_path)
-
-        # 获取元数据
-        metadata = self.extract_metadata(file_path)
-
-        return {"filename": filename, "content": content, "metadata": metadata}
-
-    @staticmethod
-    def chunk_text(text: str, chunk_size: int = 3000, overlap: int = 500) -> list[str]:
-        """
-        Splits a text into overlapping chunks, ensuring each chunk ends with a sentence-ending punctuation mark.
-
-        Args:
-            text (str): The input text to be chunked.
-            chunk_size (int): The maximum desired size (in characters) for each chunk. Defaults to 5000.
-            overlap (int): The desired number of overlapping characters between consecutive chunks. Defaults to 1000.
-
-        Returns:
-            list[str]: A list of text chunks.
-
-        Raises:
-            ValueError: If chunk_size is less than or equal to overlap, as this prevents meaningful progress.
-        """
-        actual_end_index = 0
-        sentence_enders = {".", "?", "!", "。", "？", "！", "\n"}
-        if not text:
-            return []
-
-        if chunk_size <= overlap:
-            raise ValueError(
-                f"chunk_size ({chunk_size}) must be greater than overlap ({overlap})"
-            )
-
-        chunks = []
-        start_index = 0
-        text_length = len(text)
-
-        while start_index < text_length:
-            ideal_end_index = min(start_index + chunk_size, text_length)
-            if ideal_end_index == text_length:
-                actual_end_index = text_length
-            else:
-                found_ender = False
-                for i in range(ideal_end_index - 1, start_index - 1, -1):
-
-                    if text[i] in sentence_enders:
-
-                        if (
-                            i >= start_index
-                        ):  # Ensure the ender is within the current theoretical chunk slice
-                            actual_end_index = i + 1  # Include the punctuation mark
-                            found_ender = True
-                            break
-                        else:
-                            continue
-                if not found_ender:
-                    actual_end_index = ideal_end_index
-
-            chunk = text[start_index:actual_end_index]
-            if chunk:  # Avoid adding empty chunks
-                chunks.append(chunk)
-
-            if actual_end_index >= text_length:
-                break
-
-            next_start_index = actual_end_index - overlap
-
-            if next_start_index <= start_index:
-                print(
-                    f"Warning: Potential stall detected. Chunk end: {actual_end_index}, Overlap: {overlap}, Current start: {start_index}. Calculated next start: {next_start_index}. Forcing minimal advancement."
-                )
-                start_index += 1
-            else:
-                start_index = next_start_index
-
-            # Safety clamp (though the loop condition `start_index < text_length` should suffice)
-            start_index = min(start_index, text_length)
-
-        return chunks
-
-    def save_file(self, file):
-        """保存上传的文件"""
-        content = file.file.read()
-        file.file.seek(0)
-
-        # 计算 MD5 哈希值
-        md5_hash = hashlib.md5(content).hexdigest()
-
-        filename = f"{md5_hash}_{file.filename}"
-
-        if not os.path.exists(self.upload_dir):
-            os.makedirs(self.upload_dir)
-
-        file_path = os.path.join(self.upload_dir, filename)
-
-        # 写入文件
-        with open(file_path, "wb") as f:
-            f.write(content)
-
-        return file_path, filename, md5_hash
-
-
-class TikaDocumentConvertor(DocumentConvertor):
-    """基于Tika的文档转换器实现"""
-
+class DocumentProcessor:
     def __init__(
         self,
         tika_server_url: str = "http://your-server-ip:9998",
-        upload_dir: str = "./data/uploads",
+        upload_dir="./data/uploads",
     ):
         """
-        初始化Tika文档转换器
+        初始化文档处理器
 
         Args:
             tika_server_url: Tika 服务器的 URL，默认为 http://your-server-ip:9998
-            upload_dir: 文件上传目录
         """
-        super().__init__(upload_dir)
+        self.upload_dir = upload_dir
         self.tika_server_url = tika_server_url
         logging.info(
-            f"TikaDocumentConvertor initialized with Tika server at {tika_server_url}"
+            f"DocumentProcessor initialized with Tika server at {tika_server_url}"
         )
 
-    def extract_text(self, file_path: str) -> str:
+    @staticmethod
+    def chunk_text(text: str, chunk_size: int = 3000, overlap: int = 500) -> list[str]:
         """
         Splits a text into overlapping chunks, ensuring each chunk ends with a sentence-ending punctuation mark.
 
@@ -369,3 +230,22 @@ class TikaDocumentConvertor(DocumentConvertor):
             f.write(content)
 
         return file_path, filename, md5_hash
+
+    @staticmethod
+    def get_file_md5(file_path: str) -> str:
+        """
+        计算文件的 MD5 哈希值
+
+        Args:
+            file_path: 文件路径
+
+        Returns:
+            str: 文件的 MD5 哈希值
+        """
+        try:
+            with open(file_path, "rb") as f:
+                content = f.read()
+                return hashlib.md5(content).hexdigest()
+        except Exception as e:
+            logging.error(f"计算文件 MD5 失败 {file_path}: {str(e)}")
+            raise e

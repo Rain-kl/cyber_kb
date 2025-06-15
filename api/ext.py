@@ -1,8 +1,8 @@
-import asyncio
+from functools import wraps
 from functools import wraps
 from typing import Callable
 
-from fastapi import HTTPException, Request
+from fastapi import Request
 
 from api.model import QueryResponseModel
 from config import TIKA_SERVER_URL, OLLAMA_API_URL, OLLAMA_MODEL_NAME
@@ -16,13 +16,15 @@ embedding_model = AsyncOllamaEmbeddingModel(OLLAMA_API_URL, OLLAMA_MODEL_NAME)
 def require_authorization(func: Callable):
     @wraps(func)
     async def wrapper(request: Request, *args, **kwargs):
-        authorization = request.headers.get("authorization", "").replace("Bearer ", "")
-        if not authorization:
-            raise HTTPException(
-                status_code=401, detail="Authorization token is required"
-            )
+        # authorization = request.headers.get("authorization", "").replace("Bearer ", "")
+        # if not authorization:
+        #     raise HTTPException(
+        #         status_code=401, detail="Authorization token is required"
+        #     )
         # 将授权令牌传递给原始函数，以便它可以使用
-        kwargs["authorization"] = authorization
+        authorization = "test"
+        # 使用request.state存储授权信息，这样在接口中可以读取
+        request.state.authorization = authorization
         return await func(request, *args, **kwargs)
 
     return wrapper
