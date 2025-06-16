@@ -1,12 +1,11 @@
 from functools import wraps
-from functools import wraps
 from typing import Callable
 
 from fastapi import Request
 
 from api.model import QueryResponseModel
 from config import OLLAMA_API_URL, OLLAMA_MODEL_NAME
-from core.embedding import AsyncOllamaEmbeddingModel
+from utils.embedding import AsyncOllamaEmbeddingModel
 
 embedding_model = AsyncOllamaEmbeddingModel(OLLAMA_API_URL, OLLAMA_MODEL_NAME)
 

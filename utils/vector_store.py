@@ -12,13 +12,20 @@ class VectorStore:
         self.collection = self.chroma_client.get_or_create_collection(collection)
 
     def add_documents(
-            self,
-            document_chunks: List,
-            embeddings: List[List],
-            metadata_list: List,
-            doc_id: str,
+        self,
+        document_chunks: List,
+        embeddings: List[List],
+        metadata_list: List,
+        doc_id: str,
     ):
-        """添加文档到向量数据库"""
+        """
+        添加文档到向量数据库
+        :param document_chunks:
+        :param embeddings:
+        :param metadata_list:
+        :param doc_id:
+        :return:
+        """
         ids = [f"{doc_id}_{i}" for i in range(len(document_chunks))]
 
         self.collection.add(
@@ -57,6 +64,79 @@ class VectorStore:
         results = self.collection.get(limit=limit)
 
         return results
+
+    def delete_document(self, doc_id: str):
+        """
+        删除指定doc_id的所有相关文档条目
+
+        Args:
+            doc_id (str): 要删除的文档ID
+
+        Returns:
+            int: 删除的文档条目数量
+        """
+        try:
+            # 获取所有文档
+            all_documents = self.collection.get()
+
+            # 找到所有以doc_id开头的ID
+            ids_to_delete = []
+            if all_documents["ids"]:
+                for doc_id_in_db in all_documents["ids"]:
+                    # 检查ID是否以指定的doc_id开头，格式为 {doc_id}_{chunk_index}
+                    if doc_id_in_db.startswith(f"{doc_id}_"):
+                        ids_to_delete.append(doc_id_in_db)
+
+            # 如果找到要删除的ID，执行删除操作
+            if ids_to_delete:
+                self.collection.delete(ids=ids_to_delete)
+                print(f"成功删除 {len(ids_to_delete)} 个与文档ID '{doc_id}' 相关的条目")
+                return len(ids_to_delete)
+            else:
+                print(f"未找到与文档ID '{doc_id}' 相关的条目")
+                return 0
+
+        except Exception as e:
+            print(f"删除文档时发生错误: {str(e)}")
+            raise e
+
+    def get_document_count(self):
+        """
+        获取向量数据库中文档条目的总数
+
+        Returns:
+            int: 文档条目总数
+        """
+        try:
+            results = self.collection.count()
+            return results
+        except Exception as e:
+            print(f"获取文档数量时发生错误: {str(e)}")
+            return 0
+
+    def check_document_exists(self, doc_id: str):
+        """
+        检查指定doc_id的文档是否存在
+
+        Args:
+            doc_id (str): 要检查的文档ID
+
+        Returns:
+            bool: 如果存在返回True，否则返回False
+        """
+        try:
+            # 获取所有文档ID
+            all_documents = self.collection.get()
+
+            if all_documents["ids"]:
+                for doc_id_in_db in all_documents["ids"]:
+                    if doc_id_in_db.startswith(f"{doc_id}_"):
+                        return True
+            return False
+
+        except Exception as e:
+            print(f"检查文档存在性时发生错误: {str(e)}")
+            return False
 
     @staticmethod
     def chunk_text(text: str, chunk_size: int = 3000, overlap: int = 500) -> list[str]:
@@ -99,7 +179,7 @@ class VectorStore:
                     if text[i] in sentence_enders:
 
                         if (
-                                i >= start_index
+                            i >= start_index
                         ):  # Ensure the ender is within the current theoretical chunk slice
                             actual_end_index = i + 1  # Include the punctuation mark
                             found_ender = True
@@ -130,13 +210,3 @@ class VectorStore:
             start_index = min(start_index, text_length)
 
         return chunks
-
-
-class KBVectorStore(VectorStore):
-    def __init__(self, collection, persist_directory="./data/chroma_kb"):
-        super().__init__(collection, persist_directory=persist_directory)
-
-
-class MemoVectorStore(VectorStore):
-    def __init__(self, collection, persist_directory="./data/chroma_memo"):
-        super().__init__(collection, persist_directory=persist_directory)

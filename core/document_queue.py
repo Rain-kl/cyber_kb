@@ -6,6 +6,7 @@
 支持用户分离和数据库记录
 """
 
+import asyncio
 import logging
 import queue
 import threading
@@ -15,11 +16,12 @@ from concurrent.futures import ThreadPoolExecutor, Future
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
-from typing import Dict, List, Optional, Callable
+from typing import Dict, List, Optional, Callable, Any
 
 from fastapi import UploadFile
 from pydantic import BaseModel
 
+from core.vdb_manager import UserKBVDBManager
 from utils.user_database import KnowledgeBase, KBUploadRecord
 from utils.user_file_manager import UserFileManager
 
@@ -158,12 +160,13 @@ class DocumentProcessingManager:
     """文档处理管理器 - 整合队列、数据库和文件管理"""
 
     def __init__(
-        self,
-        kb_database: KnowledgeBase,
-        file_manager: UserFileManager,
-        convert_func: Callable[[str], str],
-        max_workers: int = 3,
-        queue_impl: Optional[DocumentQueue] = None,
+            self,
+            kb_database: KnowledgeBase,
+            file_manager: UserFileManager,
+            convert_func: Callable[[str], str],
+            max_workers: int = 3,
+            queue_impl: Optional[DocumentQueue] = None,
+            enable_vector_store: bool = True,
     ):
         """
         初始化文档处理管理器
@@ -174,17 +177,26 @@ class DocumentProcessingManager:
             convert_func: 文档转换函数，接收文件路径返回转换后的文本
             max_workers: 最大并发处理数
             queue_impl: 队列实现，默认使用内存队列
+            enable_vector_store: 是否启用向量存储，默认为True
         """
         self.kb_database = kb_database
         self.file_manager = file_manager
         self.convert_func = convert_func
         self.max_workers = max_workers
         self.queue = queue_impl or MemoryDocumentQueue()
+        self.enable_vector_store = enable_vector_store
 
         self._executor = ThreadPoolExecutor(max_workers=max_workers)
         self._worker_futures: List[Future] = []
         self._running = False
         self._lock = threading.Lock()
+
+        # 使用 Semaphore 控制最大并发数
+        self._semaphore = asyncio.Semaphore(max_workers)
+        self._event_loop = None
+
+        # 缓存用户的VDB管理器实例
+        self._vdb_managers: Dict[str, UserKBVDBManager] = {}
 
         # 启动工作线程
         self.start_workers()
@@ -214,81 +226,162 @@ class DocumentProcessingManager:
 
     def _worker_loop(self):
         """工作线程循环"""
-        while self._running:
-            try:
-                task = self.queue.get_next_task()
-                if task:
-                    self._process_document_task(task)
-                else:
-                    time.sleep(0.1)  # 没有任务时短暂休眠
-            except Exception as e:
-                logging.error(f"Worker loop error: {e}")
+        # 创建新的事件循环用于当前线程
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        self._event_loop = loop
 
-    def _process_document_task(self, task: DocumentTask):
-        """处理单个文档任务"""
         try:
-            # 更新数据库状态为处理中
-            self.kb_database.update_upload_record(
-                task.doc_id, status="processing", process_start_time=datetime.now()
-            )
+            while self._running:
+                try:
+                    task = self.queue.get_next_task()
+                    if task:
+                        # 在事件循环中运行协程
+                        loop.run_until_complete(self._process_document_task(task))
+                    else:
+                        time.sleep(0.1)  # 没有任务时短暂休眠
+                except Exception as e:
+                    logging.error(f"Worker loop error: {e}")
+        finally:
+            loop.close()
 
-            # 获取文件路径
-            upload_record = self.kb_database.get_upload_record(task.doc_id)
-            if not upload_record:
-                raise Exception(f"Upload record not found for doc_id: {task.doc_id}")
+    async def _process_document_task(self, task: DocumentTask):
+        """处理单个文档任务（协程版本）"""
+        async with self._semaphore:  # 控制最大并发数
+            try:
+                # 更新数据库状态为处理中
+                await asyncio.to_thread(
+                    self.kb_database.update_upload_record,
+                    task.doc_id,
+                    status="processing",
+                    process_start_time=datetime.now(),
+                )
 
-            # 获取原始文件路径 - 注意save_uploaded_file时已经保存了文件
-            # 我们需要重构这里，根据文件名和用户token构建文件路径
-            user_dirs = self.file_manager.get_user_directories(task.user_token)
-            # 获取原始和处理目录
-            user_base = user_dirs.root
-            original_dir = user_base / "uploads" / "origin"
-            processed_dir = user_base / "uploads" / "processed"
+                # 获取文件路径
+                upload_record = await asyncio.to_thread(
+                    self.kb_database.get_upload_record, task.doc_id
+                )
 
-            # 根据doc_id查找原始文件
-            file_extension = Path(task.filename).suffix
-            original_file_path = original_dir / f"{task.doc_id}{file_extension}"
+                if not upload_record:
+                    raise Exception(
+                        f"Upload record not found for doc_id: {task.doc_id}"
+                    )
 
-            if not original_file_path.exists():
-                raise Exception(f"Original file not found: {original_file_path}")
+                # 获取原始文件路径 - 注意save_uploaded_file时已经保存了文件
+                # 我们需要重构这里，根据文件名和用户token构建文件路径
+                original_dir, processed_dir = self.file_manager.get_doc_dirs(
+                    task.user_token
+                )
 
-            # 调用转换函数
-            converted_text = self.convert_func(str(original_file_path))
+                # 根据doc_id查找原始文件
+                file_extension = Path(task.filename).suffix
+                original_file_path = original_dir / f"{task.doc_id}{file_extension}"
 
-            # 保存转换后的文本
-            processed_file_path = processed_dir / f"{task.doc_id}.txt"
-            with open(processed_file_path, "w", encoding="utf-8") as f:
-                f.write(converted_text)
+                if not original_file_path.exists():
+                    raise Exception(f"Original file not found: {original_file_path}")
 
-            # 更新任务状态为完成
-            self.queue.update_task_status(task.doc_id, TaskStatus.COMPLETED)
+                # 调用转换函数（在线程中运行，避免阻塞事件循环）
+                converted_text = await asyncio.to_thread(
+                    self.convert_func, str(original_file_path)
+                )
 
-            # 更新数据库状态为完成
-            self.kb_database.update_upload_record(
-                task.doc_id, status="completed", process_end_time=datetime.now()
-            )
+                # 保存转换后的文本（在线程中运行）
+                processed_file_path = processed_dir / f"{task.doc_id}.txt"
+                await asyncio.to_thread(
+                    self._save_converted_text, processed_file_path, converted_text
+                )
 
-            logging.info(f"Successfully processed document: {task.doc_id}")
+                # 如果启用了向量存储，将文档添加到向量库
+                if self.enable_vector_store and converted_text.strip():
+                    try:
+                        vdb_manager = self._get_vdb_manager(task.user_token)
 
-        except Exception as e:
-            error_msg = str(e)
-            logging.error(f"Failed to process document {task.doc_id}: {error_msg}")
+                        # 获取collection_id，如果没有则使用默认的"default"
+                        collection_id = upload_record.collection_id or "default"
 
-            # 更新任务状态为失败
-            self.queue.update_task_status(
-                task.doc_id, TaskStatus.FAILED, err_msg=error_msg
-            )
+                        # 将文本分割成块
+                        chunks = self._split_text_into_chunks(converted_text)
 
-            # 更新数据库状态为失败
-            self.kb_database.update_upload_record(
-                task.doc_id,
-                status="failed",
-                process_end_time=datetime.now(),
-                err_msg=error_msg,
-            )
+                        if chunks:
+                            # 生成元数据
+                            metadata_list = [
+                                {
+                                    "doc_id": task.doc_id,
+                                    "chunk_index": i,
+                                    "user_token": task.user_token,
+                                    "collection_id": collection_id,
+                                    "filename": task.filename,
+                                    "text_length": len(chunk),
+                                    "created_at": datetime.now().isoformat(),
+                                }
+                                for i, chunk in enumerate(chunks)
+                            ]
+
+                            # 添加到向量库（异步操作）
+                            chunk_ids = await vdb_manager.add_chunks(
+                                collection_id=collection_id,
+                                document_chunks=chunks,
+                                doc_id=task.doc_id,
+                                metadata_list=metadata_list,
+                            )
+
+                            logging.info(
+                                f"Added {len(chunk_ids)} chunks to vector store for doc: {task.doc_id}"
+                            )
+
+                    except Exception as e:
+                        # 向量存储失败不应影响文档处理的完成
+                        logging.error(
+                            f"Failed to add document to vector store: {str(e)}"
+                        )
+
+                # 更新任务状态为完成
+                self.queue.update_task_status(task.doc_id, TaskStatus.COMPLETED)
+
+                # 更新数据库状态为完成
+                await asyncio.to_thread(
+                    self.kb_database.update_upload_record,
+                    task.doc_id,
+                    status="completed",
+                    process_end_time=datetime.now(),
+                )
+
+                logging.info(f"Successfully processed document: {task.doc_id}")
+
+            except Exception as e:
+                error_msg = str(e)
+                logging.error(f"Failed to process document {task.doc_id}: {error_msg}")
+
+                # 更新任务状态为失败
+                self.queue.update_task_status(
+                    task.doc_id, TaskStatus.FAILED, err_msg=error_msg
+                )
+
+                # 更新数据库状态为失败
+                await asyncio.to_thread(
+                    self._update_failed_record, task.doc_id, error_msg
+                )
+
+    def _save_converted_text(self, file_path: Path, text: str):
+        """保存转换后的文本到文件"""
+        with open(file_path, "w", encoding="utf-8") as f:
+            f.write(text)
+
+    def _update_failed_record(self, doc_id: str, error_msg: str):
+        """更新失败的记录"""
+        self.kb_database.update_upload_record(
+            doc_id,
+            status="failed",
+            process_end_time=datetime.now(),
+            err_msg=error_msg,
+        )
 
     def submit_task(
-        self, user_token: str, file: UploadFile, doc_id: Optional[str] = None
+            self,
+            user_token: str,
+            file: UploadFile,
+            doc_id: Optional[str] = None,
+            collection_id: Optional[str] = None,
     ) -> str:
         """
         提交文档处理任务
@@ -297,6 +390,7 @@ class DocumentProcessingManager:
             user_token: 用户令牌
             file: 上传的文件
             doc_id: 文档ID，如果不提供则自动生成
+            collection_id: 可选的集合ID，用于将文档分组到指定的知识库集合中
 
         Returns:
             文档ID
@@ -314,6 +408,7 @@ class DocumentProcessingManager:
         upload_record = KBUploadRecord(
             doc_id=doc_id,
             user_token=user_token,
+            collection_id=collection_id,
             filename=file.filename,
             status="pending",
             upload_time=datetime.now(),
@@ -331,12 +426,16 @@ class DocumentProcessingManager:
         )
         self.queue.add_task(task)
 
-        logging.info(f"Submitted task for document: {doc_id}")
+        logging.info(
+            f"Submitted task for document: {doc_id}, collection: {collection_id}"
+        )
         return doc_id
 
     def get_task_status(self, doc_id: str) -> Optional[DocumentTask]:
         """获取任务状态"""
         rsp: KBUploadRecord = self.kb_database.get_upload_record(doc_id)
+        if not rsp:
+            raise ValueError(f"Document with ID {doc_id} not found")
         return DocumentTask(
             doc_id=rsp.doc_id,
             user_token=rsp.user_token,
@@ -360,6 +459,129 @@ class DocumentProcessingManager:
     def get_all_tasks(self) -> List[DocumentTask]:
         """获取所有任务"""
         return self.queue.get_all_tasks()
+
+    def get_vdb_manager(self, user_token: str) -> UserKBVDBManager:
+        """获取用户的VDB管理器（公共接口）"""
+        return self._get_vdb_manager(user_token)
+
+    async def search_documents(
+            self, user_token: str, collection_id: str, query_text: str, top_k: int = 5
+    ) -> Dict[str, Any]:
+        """
+        在指定集合中搜索文档
+
+        Args:
+            user_token: 用户令牌
+            collection_id: 集合ID
+            query_text: 查询文本
+            top_k: 返回结果数量
+
+        Returns:
+            搜索结果
+        """
+        if not self.enable_vector_store:
+            raise Exception("Vector store is not enabled")
+
+        vdb_manager = self._get_vdb_manager(user_token)
+        return await vdb_manager.search_by_text(collection_id, query_text, top_k)
+
+    def delete_document_from_vector_store(
+            self, user_token: str, collection_id: str, doc_id: str
+    ) -> int:
+        """
+        从向量库中删除文档
+
+        Args:
+            user_token: 用户令牌
+            collection_id: 集合ID
+            doc_id: 文档ID
+
+        Returns:
+            删除的块数量
+        """
+        if not self.enable_vector_store:
+            raise Exception("Vector store is not enabled")
+
+        vdb_manager = self._get_vdb_manager(user_token)
+        return vdb_manager.delete_document(collection_id, doc_id)
+
+    def list_vector_store_documents(
+            self, user_token: str, collection_id: str, limit: int = None
+    ) -> Dict[str, Any]:
+        """
+        列出向量库中的文档
+
+        Args:
+            user_token: 用户令牌
+            collection_id: 集合ID
+            limit: 限制返回数量
+
+        Returns:
+            文档列表
+        """
+        if not self.enable_vector_store:
+            raise Exception("Vector store is not enabled")
+
+        vdb_manager = self._get_vdb_manager(user_token)
+        return vdb_manager.list_all_documents(collection_id, limit)
+
+    def get_vector_store_document_count(
+            self, user_token: str, collection_id: str
+    ) -> int:
+        """
+        获取向量库中文档数量
+
+        Args:
+            user_token: 用户令牌
+            collection_id: 集合ID
+
+        Returns:
+            文档数量
+        """
+        if not self.enable_vector_store:
+            return 0
+
+        vdb_manager = self._get_vdb_manager(user_token)
+        return vdb_manager.get_document_count(collection_id)
+
+    def _get_vdb_manager(self, user_token: str) -> UserKBVDBManager:
+        """获取或创建用户的VDB管理器实例"""
+        if user_token not in self._vdb_managers:
+            self._vdb_managers[user_token] = UserKBVDBManager(user_token)
+        return self._vdb_managers[user_token]
+
+    def _split_text_into_chunks(
+            self, text: str, chunk_size: int = 1000, overlap: int = 100
+    ) -> List[str]:
+        """
+        将文本分割成块
+
+        Args:
+            text: 要分割的文本
+            chunk_size: 每块的大小
+            overlap: 块之间的重叠大小
+
+        Returns:
+            文本块列表
+        """
+        if not text:
+            return []
+
+        chunks = []
+        start = 0
+        text_len = len(text)
+
+        while start < text_len:
+            end = min(start + chunk_size, text_len)
+            chunk = text[start:end]
+            chunks.append(chunk)
+
+            if end >= text_len:
+                break
+
+            start = end - overlap
+
+        return chunks
 
     def __enter__(self):
         return self

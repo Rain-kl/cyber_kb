@@ -43,10 +43,9 @@ class UserFileManager(ABC):
         """获取用户的原始文件和处理后文件目录"""
         pass
 
-    @staticmethod
+    @abstractmethod
     def get_doc_dirs(self, user_token: str) -> Tuple[Path, Path]:
         """获取文档的原始和处理目录"""
-
         pass
 
     @abstractmethod
@@ -253,16 +252,17 @@ class LocalUserFileManager(UserFileManager):
     def delete_user_doc(self, user_token: str, doc_id: str) -> bool:
         """删除用户文档"""
         try:
-            # 删除文件目录
-            user_base = self._get_user_base_dir(user_token)
-
+            # 删除原始文件
             original_file_path = self._get_original_filename(user_token, doc_id)
-            _, processed_dir = self.get_doc_dirs(user_token)
-            processed_file_path = processed_dir / f"{doc_id}_processed.txt"
             if original_file_path.exists():
                 original_file_path.unlink()
+
+            # 删除处理后的文件
+            _, processed_dir = self.get_doc_dirs(user_token)
+            processed_file_path = processed_dir / f"{doc_id}.txt"  # 修正文件命名格式
             if processed_file_path.exists():
                 processed_file_path.unlink()
+
             return True
 
         except Exception:

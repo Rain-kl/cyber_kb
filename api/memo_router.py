@@ -8,7 +8,7 @@ from pydantic import BaseModel
 from api.ext import embedding_model
 from api.model import OK
 from core.mdb import MemoryDB
-from core.vector_store import MemoVectorStore
+from utils.vector_store import MemoVectorStore
 
 router = APIRouter(tags=["memo"])
 authorization = "test"

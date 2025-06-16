@@ -1,5 +1,6 @@
 # app/core/embedding.py
 import asyncio
+from abc import ABC, abstractmethod
 from asyncio import Semaphore, TaskGroup
 from typing import List
 
@@ -9,7 +10,26 @@ from loguru import logger
 from tqdm import tqdm  # 导入 tqdm 用于进度条
 
 
-class AsyncOllamaEmbeddingModel:
+class EmbeddingModel(ABC):
+    """抽象基类，定义嵌入模型的接口"""
+
+    @abstractmethod
+    async def get_embedding(self, text: str) -> List[float]:
+        """获取单个文本的嵌入向量"""
+        pass
+
+    @abstractmethod
+    async def get_embeddings_batch(self, texts: List[str], batch_size: int = 10) -> List[List[float]]:
+        """批量获取嵌入向量"""
+        pass
+
+    @abstractmethod
+    async def similarity(self, text1: str, text2: str) -> float:
+        """计算两个文本之间的相似度"""
+        pass
+
+
+class AsyncOllamaEmbeddingModel(EmbeddingModel):
     """通过 Ollama API 调用 BGE-M3 嵌入模型"""
 
     def __init__(

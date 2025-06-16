@@ -33,7 +33,7 @@ class KBUploadRecord(BaseModel):
 class UserInfo(BaseModel):
     """用户信息模型"""
 
-    user_token: str  # 主键
+    user_token: str  # 主键   
     create_time: datetime
 
 
@@ -89,25 +89,25 @@ class KnowledgeBase(UserDatabase):
 
     @abstractmethod
     def get_all_uploads(
-        self, limit: int = 50, status: Optional[str] = None
+            self, limit: int = 50, status: Optional[str] = None
     ) -> List[KBUploadRecord]:
         """获取所有上传记录（管理员用）"""
         pass
 
     @abstractmethod
     def get_user_uploads(
-        self, user_token: str, limit: int = 50, status: Optional[str] = None
+            self, user_token: str, limit: int = 50, status: Optional[str] = None
     ) -> List[KBUploadRecord]:
         """获取用户的上传记录"""
         pass
 
     @abstractmethod
     def create_collection(
-        self,
-        collection_id: str,
-        collection_name: str,
-        created_by: str,
-        description: str = None,
+            self,
+            collection_id: str,
+            collection_name: str,
+            created_by: str,
+            description: str = None,
     ) -> bool:
         """创建新的知识库集合"""
         pass
@@ -124,14 +124,14 @@ class KnowledgeBase(UserDatabase):
 
     @abstractmethod
     def get_collection(
-        self, user_token: str, collection_id: str
+            self, user_token: str, collection_id: str
     ) -> List[KBUploadRecord]:
         """获取指定集合的内容"""
         pass
 
     @abstractmethod
     def query_documents(
-        self, doc_id: str, collection_id: str, top_k: int = 5
+            self, doc_id: str, collection_id: str, top_k: int = 5
     ) -> List[KBUploadRecord]:
         """查询指定集合中的文档"""
         pass
@@ -139,8 +139,16 @@ class KnowledgeBase(UserDatabase):
 
 class SQLiteUserDatabase(UserDatabase):
     """基于 SQLite 的用户数据库实现"""
+    # 默认集合配置
+    DEFAULT_COLLECTION_NAME = "默认集合"
+    DEFAULT_COLLECTION_DESCRIPTION = "用户默认知识库集合，用于存储未指定集合的文档"
 
-    def __init__(self, db_path: str = "data/user/user.db"):
+    @staticmethod
+    def get_user_default_collection_id(user_token: str) -> str:
+        """获取用户的默认集合ID"""
+        return f"default_{user_token}"
+
+    def __init__(self, db_path: str):
         """初始化数据库连接
 
         Args:
@@ -168,6 +176,38 @@ class SQLiteUserDatabase(UserDatabase):
             )
 
             conn.commit()
+
+    def _create_user_default_collection(self, user_token: str):
+        """为用户创建默认集合"""
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+
+            collection_id = self.get_user_default_collection_id(user_token)
+
+            # 检查用户的默认集合是否存在，不存在则创建
+            cursor.execute(
+                "SELECT collection_id FROM kb_collections WHERE collection_id = ?",
+                (collection_id,),
+            )
+            if not cursor.fetchone():
+                create_time = datetime.now()
+                cursor.execute(
+                    """
+                    INSERT INTO kb_collections
+                        (collection_id, collection_name, description, create_time, created_by)
+                    VALUES (?, ?, ?, ?, ?)
+                    """,
+                    (
+                        collection_id,
+                        self.DEFAULT_COLLECTION_NAME,
+                        self.DEFAULT_COLLECTION_DESCRIPTION,
+                        create_time.isoformat(),
+                        user_token,
+                    ),
+                )
+                conn.commit()
+                return True
+            return False
 
     def _get_connection(self) -> sqlite3.Connection:
         """获取数据库连接"""
@@ -201,7 +241,9 @@ class SQLiteUserDatabase(UserDatabase):
                     "INSERT INTO user_info (user_token, create_time) VALUES (?, ?)",
                     (user_token, create_time.isoformat()),
                 )
+                # 如果没有指定collection_id，创建并使用用户的默认集合
                 conn.commit()
+                self._create_user_default_collection(user_token)
 
                 return UserInfo(user_token=user_token, create_time=create_time)
 
@@ -231,16 +273,7 @@ class SQLiteUserDatabase(UserDatabase):
 class SQLiteKnowledgeBaseDB(SQLiteUserDatabase, KnowledgeBase):
     """基于 SQLite 的知识库数据库实现，继承用户数据库功能"""
 
-    # 默认集合配置
-    DEFAULT_COLLECTION_NAME = "默认集合"
-    DEFAULT_COLLECTION_DESCRIPTION = "用户默认知识库集合，用于存储未指定集合的文档"
-
-    @staticmethod
-    def get_user_default_collection_id(user_token: str) -> str:
-        """获取用户的默认集合ID"""
-        return f"default_{user_token}"
-
-    def __init__(self, db_path: str = "data/user/user.db"):
+    def __init__(self, db_path: str):
         """初始化知识库数据库连接
 
         Args:
@@ -357,13 +390,6 @@ class SQLiteKnowledgeBaseDB(SQLiteUserDatabase, KnowledgeBase):
                 )
                 if not cursor.fetchone():
                     raise ValueError(f"User token '{record.user_token}' does not exist")
-
-                # 如果没有指定collection_id，创建并使用用户的默认集合
-                if not record.collection_id:
-                    self._create_user_default_collection(record.user_token)
-                    record.collection_id = self.get_user_default_collection_id(
-                        record.user_token
-                    )
 
                 # 检查collection_id是否存在
                 cursor.execute(
@@ -486,7 +512,7 @@ class SQLiteKnowledgeBaseDB(SQLiteUserDatabase, KnowledgeBase):
             return self._row_to_upload_record(row) if row else None
 
     def get_user_uploads(
-        self, user_token: str, limit: int = 50, status: Optional[str] = None
+            self, user_token: str, limit: int = 50, status: Optional[str] = None
     ) -> List[KBUploadRecord]:
         """获取用户的上传记录"""
         with self._get_connection() as conn:
@@ -538,7 +564,7 @@ class SQLiteKnowledgeBaseDB(SQLiteUserDatabase, KnowledgeBase):
             return [self._row_to_upload_record(row) for row in rows]
 
     def get_all_uploads(
-        self, limit: int = 50, status: Optional[str] = None
+            self, limit: int = 50, status: Optional[str] = None
     ) -> List[KBUploadRecord]:
         """获取所有上传记录（管理员用）"""
         with self._get_connection() as conn:
@@ -588,7 +614,7 @@ class SQLiteKnowledgeBaseDB(SQLiteUserDatabase, KnowledgeBase):
             return [self._row_to_upload_record(row) for row in rows]
 
     def query_documents(
-        self, doc_id: str, collection_id: str, top_k: int = 5
+            self, doc_id: str, collection_id: str, top_k: int = 5
     ) -> List[KBUploadRecord]:
         """查询指定集合中的文档
 
@@ -620,11 +646,11 @@ class SQLiteKnowledgeBaseDB(SQLiteUserDatabase, KnowledgeBase):
             return [self._row_to_upload_record(row) for row in rows]
 
     def create_collection(
-        self,
-        collection_id: str,
-        collection_name: str,
-        created_by: str,
-        description: str = None,
+            self,
+            collection_id: str,
+            collection_name: str,
+            created_by: str,
+            description: str = None,
     ) -> bool:
         """创建新的知识库集合"""
         with self._lock:
@@ -751,7 +777,7 @@ class SQLiteKnowledgeBaseDB(SQLiteUserDatabase, KnowledgeBase):
                 return cursor.rowcount > 0
 
     def get_collection(
-        self, user_token: str, collection_id: str
+            self, user_token: str, collection_id: str
     ) -> List[KBUploadRecord]:
         """获取指定集合的内容"""
         with self._get_connection() as conn:
@@ -808,46 +834,11 @@ class SQLiteKnowledgeBaseDB(SQLiteUserDatabase, KnowledgeBase):
         # 将collection_id设置为None来移除关联
         return self.update_upload_record(doc_id, collection_id=None)
 
-    def _create_user_default_collection(self, user_token: str):
-        """为用户创建默认集合"""
-        with self._get_connection() as conn:
-            cursor = conn.cursor()
-
-            collection_id = self.get_user_default_collection_id(user_token)
-
-            # 检查用户的默认集合是否存在，不存在则创建
-            cursor.execute(
-                "SELECT collection_id FROM kb_collections WHERE collection_id = ?",
-                (collection_id,),
-            )
-            if not cursor.fetchone():
-                create_time = datetime.now()
-                cursor.execute(
-                    """
-                    INSERT INTO kb_collections
-                        (collection_id, collection_name, description, create_time, created_by)
-                    VALUES (?, ?, ?, ?, ?)
-                    """,
-                    (
-                        collection_id,
-                        self.DEFAULT_COLLECTION_NAME,
-                        self.DEFAULT_COLLECTION_DESCRIPTION,
-                        create_time.isoformat(),
-                        user_token,
-                    ),
-                )
-                conn.commit()
-                return True
-            return False
-
     def get_user_default_collection_info(
-        self, user_token: str
+            self, user_token: str
     ) -> Optional[Dict[str, Any]]:
         """获取用户的默认集合信息"""
         collection_id = self.get_user_default_collection_id(user_token)
         return self.get_collection_info(collection_id)
 
 
-# 默认数据库实例
-default_user_db = SQLiteUserDatabase()
-default_kb_db = SQLiteKnowledgeBaseDB()

@@ -4,7 +4,9 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .kb_router import router as kb_router
-from .memo_router import router as memo_router
+
+
+# from .memo_router import router as memo_router
 
 
 def create_app() -> FastAPI:
@@ -24,7 +26,7 @@ def create_app() -> FastAPI:
     )
 
     # Include the API router
-    app.include_router(memo_router, prefix="/api/memory")
+    # app.include_router(memo_router, prefix="/api/memory")
     app.include_router(kb_router, prefix="/api/kb")
 
     return app
